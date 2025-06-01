@@ -1,5 +1,7 @@
 // app.js
-
+const EXPENSE_CATEGORIES_CACHE_KEY = 'expenseCategoriesCache_v1'; // 버전 명시로 필요시 캐시 초기화 용이
+const PAYMENT_METHODS_CACHE_KEY = 'paymentMethodsCache_v1';
+const INCOME_SOURCES_CACHE_KEY = 'incomeSourcesCache_v1';
 // ▼▼▼ 선생님의 실제 앱스 스크립트 웹앱 배포 URL로 반드시 교체해주세요!!! ▼▼▼
 const APPS_SCRIPT_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbzjP671pu6MMLKhmTXHwqCu-wci-Y-RM0Sl5TlQO0HmGsyrH83DBj6dsh62LqHIf-YD/exec"; 
 // ▲▲▲ 예시 URL입니다. 선생님의 배포 URL로 바꿔주세요. ▲▲▲
@@ -264,31 +266,122 @@ function updateSummary(transactions){
 }
 
 async function loadInitialData() {
-  console.log("[App.js] loadInitialData: Fetching app setup data via API...");
+  console.log("[App.js] loadInitialData: Attempting to load setup data...");
+  let renderedFromCache = false;
+  let initialTransactionsFromSetup = null; // getAppSetupData로부터 초기 거래내역 받을 변수
+
+  // 1. localStorage에서 기존 설정 데이터 로드 시도
+  const cachedCategoriesString = localStorage.getItem(EXPENSE_CATEGORIES_CACHE_KEY);
+  const cachedMethodsString = localStorage.getItem(PAYMENT_METHODS_CACHE_KEY);
+  const cachedSourcesString = localStorage.getItem(INCOME_SOURCES_CACHE_KEY);
+
+  if (cachedCategoriesString && cachedMethodsString && cachedSourcesString) {
+    console.log('[App.js] Rendering setup data from localStorage cache.');
+    try {
+      const tempExpenseCategories = JSON.parse(cachedCategoriesString);
+      const tempPaymentMethods = JSON.parse(cachedMethodsString);
+      const tempIncomeSources = JSON.parse(cachedSourcesString);
+
+      // 데이터 유효성 간단히 확인 (객체 또는 배열인지)
+      if (typeof tempExpenseCategories === 'object' && Array.isArray(tempPaymentMethods) && Array.isArray(tempIncomeSources)) {
+        expenseCategoriesData = tempExpenseCategories;
+        paymentMethodsData = tempPaymentMethods;
+        incomeSourcesData = tempIncomeSources;
+        
+        populateFormDropdowns(); 
+        populateCardSelector();
+        renderedFromCache = true;
+        console.log('[App.js] Successfully rendered setup data from cache.');
+      } else {
+        console.warn('[App.js] Cached setup data is not in expected format. Clearing cache.');
+        localStorage.removeItem(EXPENSE_CATEGORIES_CACHE_KEY);
+        localStorage.removeItem(PAYMENT_METHODS_CACHE_KEY);
+        localStorage.removeItem(INCOME_SOURCES_CACHE_KEY);
+      }
+    } catch (e) {
+      console.error("[App.js] Failed to parse setup data from localStorage. Clearing cache.", e);
+      localStorage.removeItem(EXPENSE_CATEGORIES_CACHE_KEY);
+      localStorage.removeItem(PAYMENT_METHODS_CACHE_KEY);
+      localStorage.removeItem(INCOME_SOURCES_CACHE_KEY);
+    }
+  } else {
+    console.log('[App.js] No complete setup data cache found in localStorage. Will fetch from network.');
+  }
+
+  // 2. 네트워크를 통해 최신 설정 데이터 및 (선택적) 초기 거래내역 가져오기
   try {
-    // Code.gs의 doGet에서 getAppSetupData는 initialCycleMonth 파라미터를 받을 수 있도록 수정됨
-    const setupData = await callAppsScriptApi('getAppSetupData', { initialCycleMonth: currentCycleMonth }); 
-    if (setupData) {
-      expenseCategoriesData = setupData.expenseCategories || {};
-      paymentMethodsData    = setupData.paymentMethods    || [];
-      incomeSourcesData     = setupData.incomeSources     || [];
+    console.log("[App.js] Fetching latest setup data (and potentially initial transactions) from API...");
+    // Code.gs의 getAppSetupData는 initialCycleMonth 파라미터를 받아 초기 거래내역도 반환할 수 있음
+    const setupDataFromApi = await callAppsScriptApi('getAppSetupData', { initialCycleMonth: currentCycleMonth }); 
+
+    if (setupDataFromApi) { // setupDataFromApi는 callAppsScriptApi에서 result.data를 반환한 객체
+      let uiNeedsRefreshForSetup = false;
+
+      // expenseCategoriesData 업데이트 및 캐시 저장
+      if (setupDataFromApi.expenseCategories) {
+        if (JSON.stringify(expenseCategoriesData) !== JSON.stringify(setupDataFromApi.expenseCategories)) {
+          expenseCategoriesData = setupDataFromApi.expenseCategories;
+          localStorage.setItem(EXPENSE_CATEGORIES_CACHE_KEY, JSON.stringify(expenseCategoriesData));
+          uiNeedsRefreshForSetup = true;
+          console.log('[App.js] Updated expenseCategoriesData from API.');
+        }
+      }
       
-      // 만약 getAppSetupData가 초기 거래내역(initialTransactions)도 반환한다면 여기서 처리
-      if (setupData.initialTransactions && Array.isArray(setupData.initialTransactions)) {
-        console.log("[App.js] Initial transactions received from getAppSetupData");
-        localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(setupData.initialTransactions));
-        // updateCalendarDisplay를 여기서 또 호출할 필요는 없음. window.onload에서 이미 호출됨.
-        // 만약 이 데이터로 즉시 달력을 그려야 한다면 renderCalendarAndSummary(setupData.initialTransactions) 호출.
+      // paymentMethodsData 업데이트 및 캐시 저장
+      if (setupDataFromApi.paymentMethods) {
+        if (JSON.stringify(paymentMethodsData) !== JSON.stringify(setupDataFromApi.paymentMethods)) {
+          paymentMethodsData = setupDataFromApi.paymentMethods;
+          localStorage.setItem(PAYMENT_METHODS_CACHE_KEY, JSON.stringify(paymentMethodsData));
+          uiNeedsRefreshForSetup = true;
+          console.log('[App.js] Updated paymentMethodsData from API.');
+        }
       }
 
-      populateFormDropdowns();
-      populateCardSelector();
-      showToast('앱 설정을 불러왔습니다.', false);
+      // incomeSourcesData 업데이트 및 캐시 저장
+      if (setupDataFromApi.incomeSources) {
+        if (JSON.stringify(incomeSourcesData) !== JSON.stringify(setupDataFromApi.incomeSources)) {
+          incomeSourcesData = setupDataFromApi.incomeSources;
+          localStorage.setItem(INCOME_SOURCES_CACHE_KEY, JSON.stringify(incomeSourcesData));
+          uiNeedsRefreshForSetup = true;
+          console.log('[App.js] Updated incomeSourcesData from API.');
+        }
+      }
+
+      // UI(드롭다운 등) 업데이트 필요 여부 확인
+      if (uiNeedsRefreshForSetup || !renderedFromCache) {
+        console.log('[App.js] Refreshing UI for setup data (dropdowns, etc.).');
+        populateFormDropdowns();
+        populateCardSelector();
+      }
+      
+      // getAppSetupData가 초기 거래내역(initialTransactions)도 반환한 경우 처리
+      if (setupDataFromApi.initialTransactions && Array.isArray(setupDataFromApi.initialTransactions)) {
+        console.log("[App.js] Initial transactions received from getAppSetupData (API). Caching them for cycle:", currentCycleMonth);
+        localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(setupDataFromApi.initialTransactions));
+        initialTransactionsFromSetup = setupDataFromApi.initialTransactions; // updateCalendarDisplay가 사용할 수 있도록 저장
+      }
+      
+      if (!renderedFromCache) {
+        showToast('앱 설정을 성공적으로 불러왔습니다.', false);
+      } else if (uiNeedsRefreshForSetup) {
+        showToast('앱 설정이 최신으로 업데이트 되었습니다.', false);
+      }
+
+    } else if (!renderedFromCache) {
+        showToast('설정 데이터를 불러오지 못했습니다 (API 응답 없음).', true);
     }
   } catch (error) {
     console.error('loadInitialData API call failed:', error);
-    // showToast는 callAppsScriptApi 내부에서 이미 호출됨
+    if (!renderedFromCache) {
+      // showToast는 callAppsScriptApi 내부에서도 호출될 수 있음
+    } else {
+      showToast('앱 설정 업데이트 실패. 이전에 캐시된 설정으로 계속 사용합니다.', true);
+    }
   }
+  // window.onload에서 이 함수 다음에 updateCalendarDisplay가 호출되므로,
+  // initialTransactionsFromSetup 데이터를 updateCalendarDisplay가 활용할 수 있도록 할 수 있습니다.
+  // 또는 여기서 바로 renderCalendarAndSummary(initialTransactionsFromSetup)를 호출할 수도 있습니다.
+  // 현재는 window.onload에서 updateCalendarDisplay가 별도로 호출되므로, 그곳에서 localStorage를 읽게 됩니다.
 }
 
 function setupEventListeners() {
