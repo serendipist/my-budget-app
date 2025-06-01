@@ -558,45 +558,6 @@ function populateFormForEdit(transaction) {
 }
 
 
-// ⚠️ 새 함수: 하위 카테고리 업데이트 후 값 설정
-function updateSubCategoriesAndSetValue(subCategoryValue) {
-  updateSubCategories();
-  
-  return new Promise((resolve) => {
-    const subCategorySelect = document.getElementById('subCategory');
-    
-    function checkAndSet() {
-      if (subCategorySelect.options.length > 1) {
-        subCategorySelect.value = subCategoryValue;
-        console.log('[updateSubCategoriesAndSetValue] 하위 카테고리 설정 완료:', subCategoryValue);
-        resolve();
-      } else {
-        setTimeout(checkAndSet, 10); // 10ms마다 확인
-      }
-    }
-    
-    checkAndSet();
-  });
-}
-
-// populateFormForEdit에서 사용
-if (transaction.type === '지출') {
-  document.getElementById('paymentMethod').value = transaction.paymentMethod || '';
-  document.getElementById('mainCategory').value = transaction.category1 || '';
-  
-  // Promise 기반으로 처리
-  updateSubCategoriesAndSetValue(transaction.category2 || '');
-}
-
-  
-  observer.observe(subCategorySelect, { childList: true });
-  
-  // 3초 후 자동 해제 (안전장치)
-  setTimeout(() => observer.disconnect(), 3000);
-}
-
-
-
 function showView(id){
   document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
   document.getElementById(id).classList.add('active');
