@@ -499,40 +499,64 @@ function displayDailyTransactions(arr, dateStr) {
 
 function populateFormForEdit(transaction) {
   if (!transaction || typeof transaction.row === 'undefined') {
-    console.error('[populateFormForEdit] 유효하지 않은 거래 데이터입니다.', transaction);
-    showToast('거래 정보를 불러오지 못했습니다. (ID 누락)', true); 
+    console.error('유효하지 않은 거래 데이터입니다:', transaction);
+    showToast('거래 정보를 불러오지 못했습니다.', true); 
     return;
   }
   
   currentEditingTransaction = transaction; 
   document.getElementById('transactionForm').reset();
   document.getElementById('modalTitle').textContent = '거래 수정';
+  
+  // 공통 필드 설정
   document.getElementById('transactionDate').value = transaction.date || '';
   document.getElementById('transactionAmount').value = transaction.amount || '';
   document.getElementById('transactionContent').value = transaction.content || '';
   
+  // 거래 유형 설정
   document.querySelectorAll('input[name="type"]').forEach(r => { 
     r.checked = (r.value === transaction.type); 
   });
   toggleTypeSpecificFields();
   
   if (transaction.type === '지출') {
-    // 결제수단 먼저 설정
+    // 결제수단 설정
     document.getElementById('paymentMethod').value = transaction.paymentMethod || '';
     
-    // 주 카테고리 설정
+    // ⚠️ 핵심 수정: 주 카테고리 설정 후 강제로 하위 카테고리 업데이트
     const mainCategorySelect = document.getElementById('mainCategory');
+    const subCategorySelect = document.getElementById('subCategory');
+    
+    // 1. 주 카테고리 설정
     mainCategorySelect.value = transaction.category1 || '';
+    console.log('[populateFormForEdit] 주 카테고리 설정:', transaction.category1);
     
-    // ⚠️ 개선: 이벤트 기반 하위 카테고리 처리
-    updateSubCategoriesAndSetValue(transaction.category2 || '');
+    // 2. 하위 카테고리를 직접 다시 생성 (updateSubCategories 우회)
+    subCategorySelect.innerHTML = '<option value="">선택하세요</option>';
     
-  } else { 
+    if (transaction.category1 && expenseCategoriesData[transaction.category1]) {
+      const subCategories = expenseCategoriesData[transaction.category1];
+      console.log('[populateFormForEdit] 하위 카테고리 목록:', subCategories);
+      
+      subCategories.forEach(subCategory => {
+        const option = document.createElement('option');
+        option.value = subCategory;
+        option.textContent = subCategory;
+        subCategorySelect.appendChild(option);
+      });
+      
+      // 3. 하위 카테고리 값 설정
+      subCategorySelect.value = transaction.category2 || '';
+      console.log('[populateFormForEdit] 하위 카테고리 설정:', transaction.category2);
+    }
+    
+  } else if (transaction.type === '수입') {
     document.getElementById('incomeSource').value = transaction.category1 || '';
   }
   
   document.getElementById('deleteBtn').style.display = 'block';
 }
+
 
 // ⚠️ 새 함수: 하위 카테고리 업데이트 후 값 설정
 function updateSubCategoriesAndSetValue(subCategoryValue) {
