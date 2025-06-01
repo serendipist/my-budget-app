@@ -503,55 +503,68 @@ function populateFormForEdit(transaction) {
     showToast('거래 정보를 불러오지 못했습니다. (ID 누락)', true); 
     return;
   }
-  console.log('[populateFormForEdit] 수정할 거래 데이터:', JSON.parse(JSON.stringify(transaction)));
+  
   currentEditingTransaction = transaction; 
-  
-  const form = document.getElementById('transactionForm');
-  if (form) form.reset();
-  
+  document.getElementById('transactionForm').reset();
   document.getElementById('modalTitle').textContent = '거래 수정';
-
-  // 공통 필드 채우기
   document.getElementById('transactionDate').value = transaction.date || '';
   document.getElementById('transactionAmount').value = transaction.amount || '';
   document.getElementById('transactionContent').value = transaction.content || '';
-
-  // 거래 유형 라디오 버튼 설정
-  document.querySelectorAll('input[name="type"]').forEach(r => {
-    r.checked = (r.value === transaction.type);
+  
+  document.querySelectorAll('input[name="type"]').forEach(r => { 
+    r.checked = (r.value === transaction.type); 
   });
-  toggleTypeSpecificFields(); // 유형에 따라 관련 필드 표시/숨김
-
-  // 유형별 특정 필드 채우기
+  toggleTypeSpecificFields();
+  
   if (transaction.type === '지출') {
-    console.log('[populateFormForEdit] 지출 유형 수정 시작');
+    // 결제수단 먼저 설정
     document.getElementById('paymentMethod').value = transaction.paymentMethod || '';
     
+    // 주 카테고리 설정
     const mainCategorySelect = document.getElementById('mainCategory');
-    mainCategorySelect.value = transaction.category1 || ''; 
-    console.log(`[populateFormForEdit] 주 카테고리(${mainCategorySelect.id})에 설정된 값: '${mainCategorySelect.value}' (원래 값: '${transaction.category1}')`);
-
-    // 주 카테고리 값 설정 후, 해당 값 기준으로 하위 카테고리 목록을 업데이트합니다.
-    updateSubCategories(); // 이 함수는 mainCategorySelect.value를 읽어서 하위 카테고리를 채웁니다.
+    mainCategorySelect.value = transaction.category1 || '';
     
-    // updateSubCategories가 동기적으로 DOM을 변경한 후, 하위 카테고리 값을 설정합니다.
-    const subCategorySelect = document.getElementById('subCategory');
-    subCategorySelect.value = transaction.category2 || '';
-    console.log(`[populateFormForEdit] 하위 카테고리(${subCategorySelect.id})에 설정된 값: '${subCategorySelect.value}' (원래 값: '${transaction.category2}')`);
-
-    // 만약 값이 제대로 설정되지 않았다면 (옵션이 없어서), "선택하세요"로 남아있을 것입니다.
-    // 이 경우, expenseCategoriesData나 transaction.category1, transaction.category2 값이 정확한지 확인 필요.
-    if (transaction.category2 && subCategorySelect.value !== transaction.category2) {
-        console.warn(`[populateFormForEdit] 하위 카테고리 '${transaction.category2}' 설정 실패. 현재 선택된 값: '${subCategorySelect.value}'. 사용 가능한 옵션 확인 필요.`);
-    }
-
-  } else if (transaction.type === '수입') {
-    console.log('[populateFormForEdit] 수입 유형 수정 시작');
+    // ⚠️ 개선: 이벤트 기반 하위 카테고리 처리
+    updateSubCategoriesAndSetValue(transaction.category2 || '');
+    
+  } else { 
     document.getElementById('incomeSource').value = transaction.category1 || '';
   }
-
+  
   document.getElementById('deleteBtn').style.display = 'block';
 }
+
+// ⚠️ 새 함수: 하위 카테고리 업데이트 후 값 설정
+function updateSubCategoriesAndSetValue(subCategoryValue) {
+  updateSubCategories(); // 하위 카테고리 목록 업데이트
+  
+  // MutationObserver로 DOM 변경 감지 후 값 설정
+  const subCategorySelect = document.getElementById('subCategory');
+  
+  // 이미 옵션이 있다면 바로 설정
+  if (subCategorySelect.options.length > 1) {
+    subCategorySelect.value = subCategoryValue;
+    console.log('[updateSubCategoriesAndSetValue] 하위 카테고리 즉시 설정:', subCategoryValue);
+    return;
+  }
+  
+  // 옵션이 없다면 변경 감지 후 설정
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'childList' && subCategorySelect.options.length > 1) {
+        subCategorySelect.value = subCategoryValue;
+        console.log('[updateSubCategoriesAndSetValue] 하위 카테고리 지연 설정:', subCategoryValue);
+        observer.disconnect(); // 감지 중단
+      }
+    });
+  });
+  
+  observer.observe(subCategorySelect, { childList: true });
+  
+  // 3초 후 자동 해제 (안전장치)
+  setTimeout(() => observer.disconnect(), 3000);
+}
+
 
 
 function showView(id){
