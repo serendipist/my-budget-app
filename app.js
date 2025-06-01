@@ -322,13 +322,35 @@ function populateFormDropdowns() {
 function updateSubCategories() {
   const mainCategorySelect = document.getElementById('mainCategory');
   const subCategorySelect = document.getElementById('subCategory');
-  if (!mainCategorySelect || !subCategorySelect) return;
+  if (!mainCategorySelect || !subCategorySelect) {
+    console.warn('[updateSubCategories] 주 또는 하위 카테고리 Select 요소를 찾을 수 없습니다.');
+    return;
+  }
+
   const mainCategoryValue = mainCategorySelect.value;
-  subCategorySelect.innerHTML = '<option value="">선택하세요</option>'; 
-  if (expenseCategoriesData && expenseCategoriesData[mainCategoryValue]) {
+  console.log(`[updateSubCategories] 주 카테고리 값 '${mainCategoryValue}' 기준으로 하위 목록 업데이트 시작.`);
+  
+  const previousSubCategoryValue = subCategorySelect.value; // 현재 선택된 값 (있다면)
+  subCategorySelect.innerHTML = '<option value="">선택하세요</option>'; // 일단 비우고 기본 옵션 추가
+  
+  if (expenseCategoriesData && expenseCategoriesData[mainCategoryValue] && Array.isArray(expenseCategoriesData[mainCategoryValue])) {
     expenseCategoriesData[mainCategoryValue].forEach(subCat => {
-      const option = document.createElement('option'); option.value = subCat; option.textContent = subCat; subCategorySelect.appendChild(option);
+      const option = document.createElement('option');
+      option.value = subCat;
+      option.textContent = subCat;
+      subCategorySelect.appendChild(option);
     });
+    console.log(`[updateSubCategories] '${mainCategoryValue}'에 대한 하위 카테고리 목록 생성 완료.`);
+
+    // 만약 이전에 선택된 하위 카테고리 값이 새 목록에도 있다면 다시 선택 시도
+    if (previousSubCategoryValue && expenseCategoriesData[mainCategoryValue].includes(previousSubCategoryValue)) {
+        // subCategorySelect.value = previousSubCategoryValue;
+        // console.log(`[updateSubCategories] 이전 하위 카테고리 값 '${previousSubCategoryValue}' 복원 시도.`);
+        // populateFormForEdit에서 transaction.category2로 명시적으로 설정하므로 여기서는 불필요할 수 있음
+    }
+
+  } else {
+    console.log(`[updateSubCategories] 주 카테고리 '${mainCategoryValue}'에 대한 하위 카테고리 데이터가 없습니다.`);
   }
 }
 
@@ -475,33 +497,59 @@ function displayDailyTransactions(arr, dateStr) {
   });
 }
 
-// populateFormForEdit 함수는 이전 답변의 최종본(디버깅 로그 추가된 버전)을 사용하시거나,
-// 아래의 간단한 버전을 사용하셔도 됩니다.
 function populateFormForEdit(transaction) {
   if (!transaction || typeof transaction.row === 'undefined') {
     console.error('[populateFormForEdit] 유효하지 않은 거래 데이터입니다.', transaction);
     showToast('거래 정보를 불러오지 못했습니다. (ID 누락)', true); 
     return;
   }
+  console.log('[populateFormForEdit] 수정할 거래 데이터:', JSON.parse(JSON.stringify(transaction)));
   currentEditingTransaction = transaction; 
-  document.getElementById('transactionForm').reset();
+  
+  const form = document.getElementById('transactionForm');
+  if (form) form.reset();
+  
   document.getElementById('modalTitle').textContent = '거래 수정';
+
+  // 공통 필드 채우기
   document.getElementById('transactionDate').value = transaction.date || '';
   document.getElementById('transactionAmount').value = transaction.amount || '';
   document.getElementById('transactionContent').value = transaction.content || '';
-  document.querySelectorAll('input[name="type"]').forEach(r => { r.checked = (r.value === transaction.type); });
-  toggleTypeSpecificFields();
+
+  // 거래 유형 라디오 버튼 설정
+  document.querySelectorAll('input[name="type"]').forEach(r => {
+    r.checked = (r.value === transaction.type);
+  });
+  toggleTypeSpecificFields(); // 유형에 따라 관련 필드 표시/숨김
+
+  // 유형별 특정 필드 채우기
   if (transaction.type === '지출') {
+    console.log('[populateFormForEdit] 지출 유형 수정 시작');
     document.getElementById('paymentMethod').value = transaction.paymentMethod || '';
-    document.getElementById('mainCategory').value = transaction.category1 || '';
-    updateSubCategories(); // 중요: 주 카테고리 설정 후 하위 카테고리 목록 업데이트
-    // 잠시 후 하위 카테고리 값 설정 (DOM 업데이트 대기)
-    setTimeout(() => {
-        document.getElementById('subCategory').value = transaction.category2 || '';
-    }, 0);
-  } else { 
+    
+    const mainCategorySelect = document.getElementById('mainCategory');
+    mainCategorySelect.value = transaction.category1 || ''; 
+    console.log(`[populateFormForEdit] 주 카테고리(${mainCategorySelect.id})에 설정된 값: '${mainCategorySelect.value}' (원래 값: '${transaction.category1}')`);
+
+    // 주 카테고리 값 설정 후, 해당 값 기준으로 하위 카테고리 목록을 업데이트합니다.
+    updateSubCategories(); // 이 함수는 mainCategorySelect.value를 읽어서 하위 카테고리를 채웁니다.
+    
+    // updateSubCategories가 동기적으로 DOM을 변경한 후, 하위 카테고리 값을 설정합니다.
+    const subCategorySelect = document.getElementById('subCategory');
+    subCategorySelect.value = transaction.category2 || '';
+    console.log(`[populateFormForEdit] 하위 카테고리(${subCategorySelect.id})에 설정된 값: '${subCategorySelect.value}' (원래 값: '${transaction.category2}')`);
+
+    // 만약 값이 제대로 설정되지 않았다면 (옵션이 없어서), "선택하세요"로 남아있을 것입니다.
+    // 이 경우, expenseCategoriesData나 transaction.category1, transaction.category2 값이 정확한지 확인 필요.
+    if (transaction.category2 && subCategorySelect.value !== transaction.category2) {
+        console.warn(`[populateFormForEdit] 하위 카테고리 '${transaction.category2}' 설정 실패. 현재 선택된 값: '${subCategorySelect.value}'. 사용 가능한 옵션 확인 필요.`);
+    }
+
+  } else if (transaction.type === '수입') {
+    console.log('[populateFormForEdit] 수입 유형 수정 시작');
     document.getElementById('incomeSource').value = transaction.category1 || '';
   }
+
   document.getElementById('deleteBtn').style.display = 'block';
 }
 
