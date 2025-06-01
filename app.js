@@ -289,25 +289,30 @@ function loadInitialDataWithMock() {
   console.log("[App.js] Mock initial data loaded.");
 }
 
-async function loadInitialData() { // API 연동 시 사용할 함수
-  console.log("[App.js] loadInitialData: Fetching app setup data...");
+async function loadInitialData() {
+  console.log("[App.js] loadInitialData: Fetching app setup data via API...");
   try {
-    const setupData = await callAppsScriptApi('getAppSetupData');
+    // 'getAppSetupData'는 Code.gs의 doGet에서 e.parameter.action으로 받을 이름입니다.
+    const setupData = await callAppsScriptApi('getAppSetupData'); 
+
     if (setupData) {
       expenseCategoriesData = setupData.expenseCategories || {};
       paymentMethodsData    = setupData.paymentMethods    || [];
       incomeSourcesData     = setupData.incomeSources     || [];
+      
       populateFormDropdowns();
       populateCardSelector();
-      // displayCardData(); 
       showToast('앱 설정을 불러왔습니다.', false);
+      // displayCardData(); // 카드 데이터는 카드 선택 시 또는 별도 로드
+    } else {
+      showToast('설정 데이터를 불러오는 데 실패했습니다 (데이터 없음).', true);
     }
   } catch (error) {
     console.error('loadInitialData API call failed:', error);
-    showToast('초기 앱 설정 로드 중 오류 발생.', true);
+    // showToast는 callAppsScriptApi 내부에서도 호출될 수 있습니다.
+    // 여기서는 추가적인 UI 복구 로직 등을 넣을 수 있습니다.
   }
 }
-// --- 임시 목업 데이터 사용 함수 끝 ---
 
 /* === 입력·폼 === */
 function setupEventListeners() {
