@@ -62,26 +62,29 @@ function afterRender(){ setTimeout(adjustCalendarHeight, 0); }
 });
 
 /* === 페이지 로드 순서 === */
-window.onload = async () => {
+window.onload = async () => { // async 추가
   console.log("[App.js] window.onload triggered");
   determineInitialCycleMonth();
   setupEventListeners();
   
-  // 초기 데이터 로드 (API 호출)
-  await loadInitialData(); // 카테고리 등 설정 데이터
-  await updateCalendarDisplay(); // 첫 달 달력 데이터
+  // API를 통해 실제 데이터 로드 (loadInitialData와 updateCalendarDisplay 모두 캐시 우선 전략 적용됨)
+  await loadInitialData();      // 1. 설정 데이터 로드 (캐시 우선, 네트워크 업데이트)
+  await updateCalendarDisplay();  // 2. 현재 달 거래내역 로드 (캐시 우선, 네트워크 업데이트)
 
   showView('calendarView');
   toggleTypeSpecificFields();
-  document.getElementById('transactionModal').style.display = 'none';
+  const transactionModal = document.getElementById('transactionModal');
+  if (transactionModal) {
+    transactionModal.style.display = 'none';
+  }
 
-  // 서비스 워커 등록
+  // 서비스 워커 등록 (이전과 동일)
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js', { scope: './' }) 
-      .then(registration => {
+      .then(registration => { 
         console.log('[App.js] Service Worker 등록 성공. Scope:', registration.scope);
       })
-      .catch(error => {
+      .catch(error => { 
         console.error('[App.js] Service Worker 등록 실패:', error);
       });
   }
