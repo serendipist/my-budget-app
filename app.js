@@ -1,3 +1,9 @@
+// app.js
+
+const APPS_SCRIPT_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbzjP671pu6MMLKhmTXHwqCu-wci-Y-RM0Sl5TlQO0HmGsyrH83DBj6dsh62LqHIf-YD/exec";
+// 예: "https://script.google.com/macros/s/AKfycb............/exec"
+// 이 URL은 다음 단계에서 Apps Script 백엔드를 API로 만들 때 사용합니다. 지금은 placeholder입니다.
+
 /* === 전역 상태 === */
 let currentDisplayDate = new Date();
 let currentCycleMonth = '';
@@ -5,8 +11,39 @@ let cardPerformanceMonthDate = new Date();
 let expenseCategoriesData = {};
 let paymentMethodsData = [];
 let incomeSourcesData = [];
-const transactionsCache = {}; // 이 변수는 현재 코드에서 사용되지 않는 것 같지만, 일단 유지합니다.
+// const transactionsCache = {}; // 현재 사용되지 않음
 let currentEditingTransaction = null;
+
+/* === API 호출 헬퍼 함수 (다음 단계에서 Apps Script 백엔드 연동 시 사용) === */
+async function callAppsScriptApi(actionName, params = {}) {
+  const url = new URL(APPS_SCRIPT_API_ENDPOINT);
+  url.searchParams.append('action', actionName);
+  for (const key in params) {
+    url.searchParams.append(key, params[key]);
+  }
+
+  console.log(`[API] Calling: ${actionName} with params:`, params, `URL: ${url.toString()}`);
+  try {
+    const response = await fetch(url.toString(), { method: 'GET' }); // 모든 요청을 GET으로 가정
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[API] Call to "${actionName}" failed with status ${response.status}: ${errorText}`);
+      throw new Error(`서버 응답 오류 (${response.status})`);
+    }
+    const result = await response.json();
+    if (result.success === false) {
+      console.error(`[API] Action "${actionName}" returned an error:`, result.error);
+      throw new Error(result.error || `"${actionName}" API 요청 실패`);
+    }
+    return result.data !== undefined ? result.data : result;
+  } catch (error) {
+    console.error(`[API] Error calling action "${actionName}":`, error);
+    if (typeof showToast === 'function') {
+      showToast(`"${actionName}" API 요청 중 오류: ${error.message}`, true);
+    }
+    throw error;
+  }
+}
 
 /* === 뷰포트 높이 CSS 변수 갱신 === */
 function setViewportHeightVar(){
@@ -14,14 +51,13 @@ function setViewportHeightVar(){
   document.documentElement.style.setProperty('--vh', `${h}px`);
 }
 ['load','resize','orientationchange'].forEach(evt => window.addEventListener(evt, setViewportHeightVar));
-setViewportHeightVar(); // 초기 실행
+setViewportHeightVar();
 
 /* === 달력 행 높이 동적 계산 (CSS vh로 주로 제어되므로 역할 축소 또는 제거 고려) === */
 function adjustCalendarHeight(){
-  // CSS에서 vh 단위로 높이를 제어하므로 이 함수의 필요성이 크게 줄었습니다.
+  // CSS에서 vh 단위로 높이를 제어
 }
-// afterRender 함수는 현재 호출되지 않으므로 주석 처리하거나 필요시 사용합니다.
-// function afterRender(){ setTimeout(adjustCalendarHeight, 0); } 
+function afterRender(){ setTimeout(adjustCalendarHeight, 0); }
 ['resize','orientationchange'].forEach(evt => window.addEventListener(evt, () => {
   setViewportHeightVar();
   adjustCalendarHeight();
@@ -29,22 +65,30 @@ function adjustCalendarHeight(){
 
 /* === 페이지 로드 순서 === */
 window.onload = () => {
+  console.log("[App.js] window.onload triggered");
   determineInitialCycleMonth();
   setupEventListeners();
-  updateCalendarDisplay(); // 최초 달력 데이터 로드
-  loadInitialData();      // 카테고리 등 초기 설정 데이터 로드
-  showView('calendarView'); // 기본 뷰 설정
-  toggleTypeSpecificFields(); // 수입/지출 필드 초기 상태 설정
+  
+  // 초기 데이터 로드 (API 연동 전이므로 임시 데이터 사용 또는 빈 화면으로 시작)
+  // 실제 API 연동은 다음 단계에서 진행합니다.
+  console.warn("[App.js] Using temporary/mock data for initial load. API connection needed.");
+  loadInitialDataWithMock(); // API 대신 임시 목업 데이터 사용 함수 호출
+  updateCalendarDisplayWithMock(); // API 대신 임시 목업 데이터 사용 함수 호출
+
+  showView('calendarView');
+  toggleTypeSpecificFields();
   const transactionModal = document.getElementById('transactionModal');
   if (transactionModal) {
-    transactionModal.style.display = 'none'; // 모달 초기 숨김 확실히
+    transactionModal.style.display = 'none';
   }
 
-  // 서비스 워커 등록 (GitHub Pages용으로 수정됨)
+  // 서비스 워커 등록
   if ('serviceWorker' in navigator) {
     // sw.js 파일이 index.html과 같은 루트에 있다고 가정하고 등록합니다.
-    // GitHub Pages 저장소 이름이 'my-repo'라면, 실제 경로는 'https://username.github.io/my-repo/sw.js'가 됩니다.
-    // scope는 서비스 워커가 제어할 범위를 나타냅니다. './'는 현재 디렉토리 및 하위를 의미합니다.
+    // GitHub Pages 저장소 이름이 'my-budget-app'이고 최상위에 파일들이 있다면,
+    // 서비스워커의 scope는 '/my-budget-app/' 이 됩니다.
+    // register()의 두 번째 인자로 { scope: '/my-budget-app/' } 와 같이 명시할 수 있습니다.
+    // './'는 현재 HTML 파일의 경로를 기준으로 합니다.
     navigator.serviceWorker.register('sw.js', { scope: './' }) 
       .then(registration => {
         console.log('[App.js] Service Worker 등록 성공. Scope:', registration.scope);
@@ -63,6 +107,7 @@ function determineInitialCycleMonth(){
   if(mIdx < 0){ mIdx = 11; year -= 1; }
   currentDisplayDate = new Date(year, mIdx, 18);
   currentCycleMonth = `${year}-${String(mIdx + 1).padStart(2,'0')}`;
+  console.log("[App.js] Initial cycle month determined:", currentCycleMonth);
 }
 
 function changeMonth(delta){
@@ -70,67 +115,62 @@ function changeMonth(delta){
   const y = currentDisplayDate.getFullYear();
   const m = currentDisplayDate.getMonth();
   currentCycleMonth = `${y}-${String(m + 1).padStart(2,'0')}`;
-  updateCalendarDisplay();
+  updateCalendarDisplayWithMock(); // API 연동 전이므로 목업 데이터 사용
 }
 
-function updateCalendarDisplay() {
+// --- 임시 목업 데이터 사용 함수 ---
+function updateCalendarDisplayWithMock() {
   const loader = document.getElementById('loader');
   const calendarBody = document.getElementById('calendarBody');
+  if (!calendarBody) { console.error("calendarBody not found"); return; }
 
-  if (!calendarBody) {
-    console.error("calendarBody 요소를 찾을 수 없습니다.");
-    return;
-  }
+  console.log("[App.js] updateCalendarDisplayWithMock for cycle:", currentCycleMonth);
   if(loader) loader.style.display = 'block';
-  calendarBody.innerHTML = ''; // 이전 내용 초기화
-
-  // !! 중요 !!
-  // google.script.run은 GitHub Pages와 같은 외부 호스팅 환경에서는 직접 작동하지 않습니다.
-  // 이 부분은 나중에 Apps Script를 API로 사용하고 fetch로 호출하는 방식으로 변경해야 합니다.
-  // 지금은 일단 주석 처리하거나, 작동하지 않을 것을 예상하고 두어야 합니다.
-  // 테스트를 위해 임시로 빈 데이터를 반환하도록 할 수 있습니다.
-  console.warn("updateCalendarDisplay: google.script.run.getTransactions 호출은 외부 호스팅에서 수정 필요합니다. 임시로 빈 데이터를 사용합니다.");
-  renderCalendarAndSummary([]); // 임시로 빈 데이터로 달력 그림
-  if(loader) loader.style.display = 'none'; // 로더 숨김
+  calendarBody.innerHTML = ''; 
   
-  /* // 기존 google.script.run 호출 부분 (나중에 수정 필요)
+  // 여기에 로컬스토리지에서 가져오거나, 테스트용 빈 배열/샘플 데이터 사용
   const cachedData = localStorage.getItem('transactions_' + currentCycleMonth);
+  let transactionsToRender = [];
   if (cachedData) {
-    console.log('Rendering calendar from localStorage cache for cycle:', currentCycleMonth);
-    const transactions = JSON.parse(cachedData);
-    renderCalendarAndSummary(transactions);
-    if(loader) loader.style.display = 'none';
-
-    google.script.run
-      .withSuccessHandler(freshData => {
-        console.log('Background cache has been updated for cycle:', currentCycleMonth);
-        localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(freshData.result || []));
-      })
-      .withFailureHandler(err => {
-         console.error('Background getTransactions 실패 for cycle:', currentCycleMonth, err);
-      })
-      .getTransactions(currentCycleMonth);
+    console.log('Rendering calendar from localStorage cache.');
+    try {
+      transactionsToRender = JSON.parse(cachedData);
+    } catch(e) {
+      console.error("Failed to parse transactions from localStorage", e);
+      localStorage.removeItem('transactions_' + currentCycleMonth); // 잘못된 데이터 삭제
+    }
   } else {
-    if(loader) loader.style.display = 'block';
-    calendarBody.innerHTML = ''; 
-
-    google.script.run
-      .withSuccessHandler(response => {
-        const transactions = Array.isArray(response.result) ? response.result : [];
-        localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(transactions));
-        renderCalendarAndSummary(transactions);
-        if(loader) loader.style.display = 'none';
-      })
-      .withFailureHandler(err => {
-        console.error('getTransactions 실패 for cycle:', currentCycleMonth, err);
-        showToast('거래 내역을 불러오는 데 실패했습니다.', true);
-        if(loader) loader.style.display = 'none';
-        renderCalendarAndSummary([]);
-      })
-      .getTransactions(currentCycleMonth);
+    console.log('No localStorage cache found for this month. Displaying empty calendar.');
+    // 예시: transactionsToRender = [{date: currentCycleMonth + "-20", type: "지출", amount: 12000, content: "테스트 지출"}];
   }
-  */
+
+  renderCalendarAndSummary(transactionsToRender);
+  if(loader) loader.style.display = 'none';
 }
+
+async function updateCalendarDisplay() { // API 연동 시 사용할 함수
+  const loader = document.getElementById('loader');
+  const calendarBody = document.getElementById('calendarBody');
+  if (!calendarBody) { console.error("calendarBody not found"); return; }
+
+  if(loader) loader.style.display = 'block';
+  calendarBody.innerHTML = '';
+
+  console.log("[App.js] updateCalendarDisplay: Fetching transactions for cycle:", currentCycleMonth);
+  try {
+    const transactions = await callAppsScriptApi('getTransactions', { cycleMonth: currentCycleMonth });
+    localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(transactions || []));
+    renderCalendarAndSummary(transactions || []);
+  } catch (error) {
+    console.error('updateCalendarDisplay API call failed:', error);
+    showToast('거래 내역을 불러오는데 실패했습니다.', true);
+    renderCalendarAndSummary([]); // 오류 시 빈 달력
+  } finally {
+    if(loader) loader.style.display = 'none';
+  }
+}
+// --- 임시 목업 데이터 사용 함수 끝 ---
+
 
 function renderCalendarAndSummary(transactions){
   const year = parseInt(currentCycleMonth.split('-')[0], 10);
@@ -138,6 +178,8 @@ function renderCalendarAndSummary(transactions){
   const currentMonthYearEl = document.getElementById('currentMonthYear');
   if (currentMonthYearEl) {
     currentMonthYearEl.textContent = `${year}년 ${String(month).padStart(2,'0')}월 주기`;
+  } else {
+    console.error("currentMonthYear element not found");
   }
   renderCalendar(year, month, transactions);
   updateSummary(transactions);
@@ -145,11 +187,11 @@ function renderCalendarAndSummary(transactions){
 
 function renderCalendar(year, monthOneBased, transactions){
   const calendarBody = document.getElementById('calendarBody');
-  if (!calendarBody) return;
+  if (!calendarBody) { console.error("calendarBody for renderCalendar not found"); return; }
   calendarBody.innerHTML = '';
   const transMap = {};
   (transactions||[]).forEach(t=>{
-    if (t && t.date) { // t와 t.date가 유효한지 확인
+    if (t && t.date) {
       (transMap[t.date] = transMap[t.date] || []).push(t);
     }
   });
@@ -159,9 +201,8 @@ function renderCalendar(year, monthOneBased, transactions){
   let curDate = new Date(cycleStart);
   let weekRow = document.createElement('tr');
   const frag = document.createDocumentFragment();
-  
-  // 시작일의 요일(0=일요일)에 따라 첫 주 빈 칸 채우기
   const startDayOfWeek = cycleStart.getDay(); 
+
   for(let i=0; i<startDayOfWeek; i++){
     const td = document.createElement('td'); 
     td.className='other-month'; 
@@ -180,7 +221,7 @@ function renderCalendar(year, monthOneBased, transactions){
     td.onclick = () => openModal(dStr);
 
     (transMap[dStr]||[]).forEach(t=>{
-      if (t && typeof t.amount !== 'undefined') { // t와 t.amount가 유효한지 확인
+      if (t && typeof t.amount !== 'undefined') {
         const div = document.createElement('div');
         div.className = `transaction-item ${t.type==='수입'?'income':'expense'}`;
         div.textContent = `${Number(t.amount).toLocaleString()}원`;
@@ -189,9 +230,7 @@ function renderCalendar(year, monthOneBased, transactions){
     });
 
     weekRow.appendChild(td);
-    // 한 주의 마지막 날이거나(토요일) 주기의 마지막 날이면 행을 추가하고 새 행 시작
     if(curDate.getDay() === 6 || curDate.getTime() === cycleEnd.getTime()){
-      // 주기의 마지막 날인데 토요일이 아니면, 남은 요일 빈 칸 채우기
       if(curDate.getDay() !== 6 && curDate.getTime() === cycleEnd.getTime()){ 
         for(let i = curDate.getDay() + 1; i <= 6; i++){
           const emptyTd = document.createElement('td'); 
@@ -206,24 +245,14 @@ function renderCalendar(year, monthOneBased, transactions){
     }
     curDate.setDate(curDate.getDate() + 1);
   }
-  // 마지막 주가 7일 미만으로 채워졌다면 빈 칸 추가 (이 로직은 이미 위에서 처리됨)
-  // if (weekRow.children.length > 0 && weekRow.children.length < 7) {
-  //   for (let i = weekRow.children.length; i < 7; i++) {
-  //     const td = document.createElement('td'); td.className = 'other-month'; weekRow.appendChild(td);
-  //   }
-  //   frag.appendChild(weekRow);
-  // } else if (weekRow.children.length === 7 && frag.lastChild !== weekRow && curDate > cycleEnd) { 
-  //   // 이 조건은 curDate가 cycleEnd를 초과한 후 마지막 주가 정확히 7개일때를 의미, 이미 위에서 추가됨
-  //   // frag.appendChild(weekRow); 
-  // }
   calendarBody.appendChild(frag);
-  afterRender(); // adjustCalendarHeight 호출
+  if (typeof afterRender === 'function') afterRender();
 }
 
 function updateSummary(transactions){
   let inc = 0, exp = 0;
   (transactions||[]).forEach(t => {
-    if (t && typeof t.amount !== 'undefined') { // t와 t.amount 유효성 검사
+    if (t && typeof t.amount !== 'undefined') {
       const a = Number(t.amount)||0;
       if (t.type==='수입') inc += a;
       else exp += a;
@@ -239,41 +268,46 @@ function updateSummary(transactions){
   if(expEl) expEl.textContent = `₩${exp.toLocaleString()}`;
   if(balEl) {
     balEl.textContent = `₩${bal.toLocaleString()}`;
+    balEl.className = 'total-balance'; // Reset class
     if (bal < 0) balEl.classList.add('negative');
-    else balEl.classList.remove('negative');
   }
 }
 
-/* === 설정 데이터 === */
-function loadInitialData() {
-  // !! 중요 !!
-  // google.script.run은 외부 호스팅에서 수정 필요. 임시로 빈 데이터 또는 기본값 사용.
-  console.warn("loadInitialData: google.script.run.getAppSetupData 호출은 외부 호스팅에서 수정 필요합니다. 임시 데이터를 사용합니다.");
-  expenseCategoriesData = {"생활용품": ["세제", "휴지"], "식비": ["점심", "저녁", "간식"]}; // 예시 데이터
-  paymentMethodsData = [{name: "현대카드", isCard: true, target: 500000}, {name: "국민카드", isCard: true, target: 300000}, {name: "현금", isCard: false}]; // 예시 데이터
-  incomeSourcesData = ["월급", "부수입"]; // 예시 데이터
+// --- 임시 목업 데이터 사용 함수 ---
+function loadInitialDataWithMock() {
+  console.warn("[App.js] loadInitialDataWithMock: Using mock data. API connection needed.");
+  expenseCategoriesData = {"식비": ["점심", "저녁", "간식"], "교통비": ["버스", "지하철"]};
+  paymentMethodsData = [
+    {name: "현대카드", isCard: true, target: 500000},
+    {name: "국민현금", isCard: false, target: 0} 
+  ];
+  incomeSourcesData = ["월급", "용돈"];
+  
   populateFormDropdowns();
   populateCardSelector();
-  displayCardData(); // 카드가 선택되어 있다면 데이터를 바로 표시하도록 추가
+  // displayCardData(); // 카드 데이터도 목업 또는 API 연동 필요
+  console.log("[App.js] Mock initial data loaded.");
+}
 
-  /* // 기존 google.script.run 호출 부분 (나중에 수정 필요)
-  google.script.run
-    .withSuccessHandler(setup => {
-      if (setup.error) { showToast('설정 데이터를 불러오지 못했습니다: ' + setup.error, true); return; }
-      expenseCategoriesData = setup.expenseCategories || {};
-      paymentMethodsData    = setup.paymentMethods    || [];
-      incomeSourcesData     = setup.incomeSources     || [];
+async function loadInitialData() { // API 연동 시 사용할 함수
+  console.log("[App.js] loadInitialData: Fetching app setup data...");
+  try {
+    const setupData = await callAppsScriptApi('getAppSetupData');
+    if (setupData) {
+      expenseCategoriesData = setupData.expenseCategories || {};
+      paymentMethodsData    = setupData.paymentMethods    || [];
+      incomeSourcesData     = setupData.incomeSources     || [];
       populateFormDropdowns();
       populateCardSelector();
-      displayCardData(); // 로드 후 카드 데이터 표시
-    })
-    .withFailureHandler(err => {
-      console.error('getAppSetupData 실패', err);
-      showToast('설정 데이터를 불러오지 못했습니다.', true);
-    })
-    .getAppSetupData();
-  */
+      // displayCardData(); 
+      showToast('앱 설정을 불러왔습니다.', false);
+    }
+  } catch (error) {
+    console.error('loadInitialData API call failed:', error);
+    showToast('초기 앱 설정 로드 중 오류 발생.', true);
+  }
 }
+// --- 임시 목업 데이터 사용 함수 끝 ---
 
 /* === 입력·폼 === */
 function setupEventListeners() {
@@ -281,14 +315,17 @@ function setupEventListeners() {
   if (transactionForm) {
     transactionForm.addEventListener('submit', handleTransactionSubmit);
   }
-  // 기타 이벤트 리스너 (탭 버튼, 월 이동 버튼 등)는 HTML onclick에서 직접 호출되므로 여기서는 생략.
-  // 만약 프로그래매틱하게 추가해야 할 리스너가 있다면 여기에 추가.
 }
 
 function toggleTypeSpecificFields() {
   const typeRadio = document.querySelector('input[name="type"]:checked');
-  if (!typeRadio) return;
-  const type = typeRadio.value;
+  if (!typeRadio) {
+    // 기본값으로 '지출'을 선택하도록 설정 (예시)
+    const defaultExpenseRadio = document.querySelector('input[name="type"][value="지출"]');
+    if (defaultExpenseRadio) defaultExpenseRadio.checked = true;
+  }
+  const type = document.querySelector('input[name="type"]:checked')?.value || '지출'; // 기본값 '지출'
+
   const expenseFields = document.getElementById('expenseSpecificFields');
   const incomeFields = document.getElementById('incomeSpecificFields');
   if (expenseFields) expenseFields.style.display = type === '지출' ? 'block' : 'none';
@@ -299,20 +336,20 @@ function populateFormDropdowns() {
   const pm = document.getElementById('paymentMethod');
   if (pm) {
     pm.innerHTML = '<option value="">선택하세요</option>';
-    (paymentMethodsData||[]).forEach(m=>{ const o=document.createElement('option'); o.value=o.textContent=m.name; pm.appendChild(o); });
+    (paymentMethodsData||[]).forEach(m=>{ const o=document.createElement('option'); o.value=m.name; o.textContent=m.name; pm.appendChild(o); });
   }
 
   const mainSel = document.getElementById('mainCategory');
   if (mainSel) {
     mainSel.innerHTML = '<option value="">선택하세요</option>';
-    for (const k in expenseCategoriesData) { const o=document.createElement('option'); o.value=o.textContent=k; mainSel.appendChild(o); }
-    updateSubCategories(); // 주 카테고리 로드 후 하위 카테고리 업데이트
+    for (const k in expenseCategoriesData) { const o=document.createElement('option'); o.value=k; o.textContent=k; mainSel.appendChild(o); }
+    updateSubCategories();
   }
   
   const incSel = document.getElementById('incomeSource');
   if (incSel) {
     incSel.innerHTML='<option value="">선택하세요</option>';
-    (incomeSourcesData||[]).forEach(s=>{ const o=document.createElement('option'); o.value=o.textContent=s; incSel.appendChild(o); });
+    (incomeSourcesData||[]).forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; incSel.appendChild(o); });
   }
 }
 
@@ -322,7 +359,7 @@ function updateSubCategories() {
   if (!mainCategorySelect || !subCategorySelect) return;
 
   const mainCategoryValue = mainCategorySelect.value;
-  subCategorySelect.innerHTML = '<option value="">선택하세요</option>'; // Clear previous options
+  subCategorySelect.innerHTML = '<option value="">선택하세요</option>'; 
   
   if (expenseCategoriesData && expenseCategoriesData[mainCategoryValue]) {
     expenseCategoriesData[mainCategoryValue].forEach(subCat => {
@@ -335,77 +372,102 @@ function updateSubCategories() {
 }
 
 /* === 거래 저장 === */
-function handleTransactionSubmit(e) {
+async function handleTransactionSubmit(e) {
   e.preventDefault();
   
   const form = e.target;
   const fd = new FormData(form);
   const transactionData = {};
-  fd.forEach((v, k) => transactionData[k] = v);
+  fd.forEach((v, k) => transactionData[k] = v); // FormData를 객체로 변환
+
+  // 클라이언트 측 유효성 검사 (간단 예시)
+  if (!transactionData.date || !transactionData.amount || !transactionData.content) {
+    showToast("날짜, 금액, 내용은 필수입니다.", true);
+    return;
+  }
+  if (transactionData.type === '지출' && (!transactionData.paymentMethod || !transactionData.mainCategory || !transactionData.subCategory)) {
+    showToast("지출 시 결제수단과 카테고리는 필수입니다.", true);
+    return;
+  }
+  if (transactionData.type === '수입' && !transactionData.incomeSource) {
+    showToast("수입 시 수입원은 필수입니다.", true);
+    return;
+  }
+
 
   // UI 즉시 업데이트 (Optimistic Update)
   const isEditing = currentEditingTransaction && typeof currentEditingTransaction.row !== 'undefined';
   const originalData = JSON.parse(localStorage.getItem('transactions_' + currentCycleMonth) || '[]');
-  let optimisticData = JSON.parse(JSON.stringify(originalData)); // Deep copy
+  let optimisticData = JSON.parse(JSON.stringify(originalData)); 
+
+  const tempRowId = `temp-${Date.now()}`;
+  let itemForServer = { ...transactionData }; // 서버에 보낼 데이터 복사
 
   if (isEditing) {
     const index = optimisticData.findIndex(t => t && typeof t.row !== 'undefined' && t.row.toString() === currentEditingTransaction.row.toString());
     if (index > -1) {
-      const updatedItem = { ...optimisticData[index], ...transactionData };
-      if (updatedItem.type === '수입') {
-        updatedItem.category1 = transactionData.incomeSource || ''; // FormData에서 직접 가져옴
-        updatedItem.category2 = '';
-        delete updatedItem.mainCategory; delete updatedItem.subCategory; delete updatedItem.paymentMethod;
-      } else { // 지출
-        updatedItem.category1 = transactionData.mainCategory || ''; // FormData에서 직접 가져옴
-        updatedItem.category2 = transactionData.subCategory || '';  // FormData에서 직접 가져옴
-        updatedItem.paymentMethod = transactionData.paymentMethod || ''; // FormData에서 직접 가져옴
-        delete updatedItem.incomeSource;
+      itemForServer.id_to_update = currentEditingTransaction.row; // 수정 시 ID 전달
+      optimisticData[index] = { ...optimisticData[index], ...transactionData }; // UI용 데이터 업데이트
+      if (optimisticData[index].type === '수입') {
+        optimisticData[index].category1 = transactionData.incomeSource || '';
+        optimisticData[index].category2 = '';
+      } else { 
+        optimisticData[index].category1 = transactionData.mainCategory || '';
+        optimisticData[index].category2 = transactionData.subCategory || '';
       }
-      optimisticData[index] = updatedItem;
     }
   } else {
-    const newItem = { ...transactionData, row: `temp-${Date.now()}` }; // 임시 ID
-    if (newItem.type === '수입') {
-      newItem.category1 = transactionData.incomeSource || '';
-      newItem.category2 = '';
-    } else { // 지출
-      newItem.category1 = transactionData.mainCategory || '';
-      newItem.category2 = transactionData.subCategory || '';
-      // newItem.paymentMethod는 FormData에서 이미 포함됨
-    }
-    optimisticData.push(newItem);
+    itemForServer.row = tempRowId; // 새 항목은 임시 ID로 UI에 먼저 반영
+    const newItemForUI = { ...transactionData, row: tempRowId };
+     if (newItemForUI.type === '수입') {
+        newItemForUI.category1 = transactionData.incomeSource || '';
+        newItemForUI.category2 = '';
+      } else { 
+        newItemForUI.category1 = transactionData.mainCategory || '';
+        newItemForUI.category2 = transactionData.subCategory || '';
+      }
+    optimisticData.push(newItemForUI);
   }
   
   localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(optimisticData));
   renderCalendarAndSummary(optimisticData);
-  showToast(isEditing ? '수정 사항을 서버에 전송 중...' : '저장 사항을 서버에 전송 중...');
+  showToast(isEditing ? '수정 사항 전송 중...' : '저장 사항 전송 중...');
   closeModal();
 
-  // !! 중요 !!
-  // google.script.run은 외부 호스팅에서 수정 필요.
-  console.warn("handleTransactionSubmit: google.script.run 호출은 외부 호스팅에서 수정 필요합니다.");
-  // 성공/실패 시 UI 롤백 로직은 일단 유지. 실제 서버 호출은 나중에 구현.
-  if (isEditing) {
-    transactionData.id_to_update = currentEditingTransaction.row; // 실제 ID 전달
-    // google.script.run.withSuccessHandler(res => { ... }).updateTransaction(transactionData);
-    console.log("수정 데이터 (서버 전송 대기):", transactionData);
-    // 임시로 성공 처리 후 캐시만 업데이트하는 것처럼
-    setTimeout(() => { 
-        showToast('수정 완료 (실제 서버 연동 필요)', false);
-        // 실제로는 서버에서 최신 데이터를 다시 받아와야 함
-        // google.script.run.getTransactions(currentCycleMonth)...
-    }, 1000);
+  // 서버에 실제 작업 요청 (API 연동 시)
+  const action = isEditing ? 'updateTransaction' : 'addTransaction';
+  try {
+    // POST 방식으로 데이터를 보내려면 callAppsScriptApi 수정 필요
+    // 여기서는 GET 방식에 맞게 데이터를 문자열화하여 params로 전달 (매우 긴 데이터에는 부적합)
+    // const serverResult = await callAppsScriptApi(action, { transactionDataString: JSON.stringify(itemForServer) });
+    
+    // 임시: 지금은 google.script.run이 없으므로 콘솔에만 기록
+    console.warn(`[App.js] ${action}: Server call with`, itemForServer, `(API connection needed)`);
+    // 가짜 성공 응답 (테스트용)
+    const serverResult = { success: true, message: "임시 성공", newRowId: isEditing ? itemForServer.id_to_update : Date.now() };
 
-  } else {
-    // google.script.run.withSuccessHandler(res => { ... }).addTransaction(transactionData);
-    console.log("추가 데이터 (서버 전송 대기):", transactionData);
-    // 임시로 성공 처리 후 캐시만 업데이트하는 것처럼
-    setTimeout(() => {
-        showToast('저장 완료 (실제 서버 연동 필요)', false);
-        // 실제로는 서버에서 최신 데이터를 다시 받아와야 함
-        // google.script.run.getTransactions(currentCycleMonth)...
-    }, 1000);
+
+    if (serverResult.success) {
+      showToast(serverResult.message || (isEditing ? '수정 완료!' : '저장 완료!'), false);
+      // 성공 시, 서버로부터 최신 데이터(또는 새 ID)를 받아 로컬스토리지와 UI를 최종 업데이트 할 수 있음
+      // 예: optimisticData에서 temp-ID를 실제 ID로 교체
+      if (!isEditing && serverResult.newRowId) {
+        const tempItemIndex = optimisticData.findIndex(item => item.row === tempRowId);
+        if (tempItemIndex > -1) optimisticData[tempItemIndex].row = serverResult.newRowId;
+      }
+      // 전체 데이터를 다시 불러와서 갱신 (가장 확실한 방법)
+      // await updateCalendarDisplay(); // API 연동 후 주석 해제
+      localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(optimisticData)); // 임시 ID가 있다면 실제 ID로 업데이트 된것 저장
+      renderCalendarAndSummary(optimisticData); // UI 다시 그리기
+
+    } else {
+      throw new Error(serverResult.message || '서버 작업 실패');
+    }
+  } catch (error) {
+    showToast(isEditing ? '수정 실패!' : '저장 실패!' + ` (${error.message})`, true);
+    // 오류 발생 시 Optimistic Update 롤백
+    localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(originalData));
+    renderCalendarAndSummary(originalData);
   }
 }
 
@@ -423,7 +485,7 @@ function openModal(dateStr) {
   if (modalTitle) modalTitle.textContent = '거래 추가';
   if (transactionDateInput) transactionDateInput.value = dateStr;
   
-  toggleTypeSpecificFields(); // 라디오 버튼 기본값에 따라 필드 표시
+  toggleTypeSpecificFields(); 
   
   const dailyList = document.getElementById('dailyTransactionList');
   const dailySection = document.getElementById('dailyTransactions');
@@ -436,7 +498,7 @@ function openModal(dateStr) {
   const transactionModal = document.getElementById('transactionModal');
   if (transactionModal) transactionModal.style.display = 'flex'; 
   
-  loadDailyTransactions(dateStr); 
+  loadDailyTransactionsWithMock(dateStr); // API 연동 전이므로 목업 데이터 사용
 }
 
 function closeModal(){ 
@@ -458,58 +520,54 @@ function toggleDailyTransactionVisibility() {
     dailySection.style.display = 'none';
     toggleBtn.textContent = '거래 내역 보기';
 
-    // "거래 내역 숨기기" 시 폼 초기화 (날짜는 보존)
-    const preservedDate = document.getElementById('transactionDate').value;
-    const transactionForm = document.getElementById('transactionForm');
-    if (transactionForm) transactionForm.reset();
+    const preservedDate = document.getElementById('transactionDate')?.value;
+    document.getElementById('transactionForm')?.reset();
     const transactionDateInput = document.getElementById('transactionDate');
-    if (transactionDateInput) transactionDateInput.value = preservedDate;
+    if (transactionDateInput && preservedDate) transactionDateInput.value = preservedDate;
 
-    const modalTitle = document.getElementById('modalTitle');
-    if (modalTitle) modalTitle.textContent = '거래 추가';
-    const deleteBtn = document.getElementById('deleteBtn');
-    if (deleteBtn) deleteBtn.style.display = 'none';
+    document.getElementById('modalTitle').textContent = '거래 추가';
+    document.getElementById('deleteBtn').style.display = 'none';
     currentEditingTransaction = null;
     toggleTypeSpecificFields();
   }
 }
 
-function loadDailyTransactions(dateStr) {
+// --- 임시 목업 데이터 사용 함수 ---
+function loadDailyTransactionsWithMock(dateStr) {
   const list = document.getElementById('dailyTransactionList');
-  // const dailySection = document.getElementById('dailyTransactions'); // 현재 사용 안함
   if (!list) return;
+  list.textContent = '불러오는 중... (목업)';
+  console.warn(`[App.js] loadDailyTransactionsWithMock for date: ${dateStr}. API connection needed.`);
+  
+  // 로컬 스토리지에서 해당 날짜의 거래내역을 가져와서 표시 (Optimistic Update와 연계)
+  const allTransactionsForMonth = JSON.parse(localStorage.getItem('transactions_' + currentCycleMonth) || '[]');
+  const transactionsForDate = allTransactionsForMonth.filter(t => t.date === dateStr);
 
-  list.textContent = '불러오는 중...';
-
-  // !! 중요 !!
-  // google.script.run은 외부 호스팅에서 수정 필요. 임시 데이터 사용.
-  console.warn("loadDailyTransactions: google.script.run.getTransactionsByDate 호출은 외부 호스팅에서 수정 필요합니다.");
-  const exampleTransactions = [
-    // {type: '지출', content: '점심식사', amount: 8000, paymentMethod: '현대카드', category1: '식비', category2: '점심', row: 1},
-    // {type: '수입', content: '월급', amount: 2000000, category1: '월급', row: 2}
-  ];
-  // UI 테스트를 위해 빈 배열로 설정하거나, 위와 같이 샘플 데이터를 넣어볼 수 있습니다.
-  setTimeout(() => displayDailyTransactions(exampleTransactions, dateStr), 500);
-
-  /* // 기존 google.script.run 호출 부분
-  google.script.run
-    .withSuccessHandler(function(arr) {
-      displayDailyTransactions(arr, dateStr);
-    })
-    .withFailureHandler(function(err) {
-      console.error("getTransactionsByDate 실패:", err);
-      if (list) list.textContent = '거래 내역을 불러오는 중 오류가 발생했습니다.';
-    })
-    .getTransactionsByDate(dateStr);
-  */
+  setTimeout(() => displayDailyTransactions(transactionsForDate, dateStr), 100); // 약간의 딜레이로 비동기 흉내
 }
 
-function displayDailyTransactions(arr, dateStr) { // loadDailyTransactions의 콜백으로 분리
+async function loadDailyTransactions(dateStr) { // API 연동 시 사용할 함수
+  const list = document.getElementById('dailyTransactionList');
+  if (!list) return;
+  list.textContent = '불러오는 중...';
+  
+  try {
+    const dailyData = await callAppsScriptApi('getTransactionsByDate', { date: dateStr });
+    displayDailyTransactions(dailyData || [], dateStr);
+  } catch (error) {
+    console.error('loadDailyTransactions API call failed:', error);
+    if (list) list.textContent = '일일 거래 내역 로딩 실패.';
+    showToast('일일 거래 내역 로딩 실패', true);
+  }
+}
+// --- 임시 목업 데이터 사용 함수 끝 ---
+
+function displayDailyTransactions(arr, dateStr) {
   const list = document.getElementById('dailyTransactionList');
   if (!list) return;
 
-  if (arr && arr.error) {
-    list.textContent = '내역을 불러오는 중 오류: ' + arr.error;
+  if (arr && arr.error) { // Apps Script에서 {error: "..."} 형태로 반환하는 경우
+    list.textContent = '내역 로딩 오류: ' + arr.error;
     return;
   }
   if (!Array.isArray(arr) || arr.length === 0) {
@@ -519,13 +577,10 @@ function displayDailyTransactions(arr, dateStr) { // loadDailyTransactions의 �
 
   list.innerHTML = '';
   arr.forEach(function(t) {
-    if (!t || typeof t.type === 'undefined') return; // 데이터 유효성 검사
+    if (!t || typeof t.type === 'undefined') return;
 
     const d = document.createElement('div');
-    d.classList.add(
-      'transaction-item',
-      t.type === '수입' ? 'income' : 'expense'
-    );
+    d.classList.add('transaction-item', t.type === '수입' ? 'income' : 'expense');
     
     let txt = `[${t.type}] ${t.content || '(내용 없음)'}: ${Number(t.amount || 0).toLocaleString()}원`;
     if (t.type === '지출' && t.paymentMethod) txt += ` (${t.paymentMethod})`;
@@ -536,58 +591,41 @@ function displayDailyTransactions(arr, dateStr) { // loadDailyTransactions의 �
     d.title = '클릭하여 이 내용 수정하기';
     
     d.addEventListener('click', function() {
-      populateFormForEdit(t); // 여기서 t는 서버에서 받아온 전체 객체
+      populateFormForEdit(t); 
     });
     list.appendChild(d);
   });
 }
 
-
 function populateFormForEdit(transaction) {
   if (!transaction || typeof transaction.row === 'undefined') {
-    console.error('populateFormForEdit: 전달된 거래 객체에 row 필드가 없습니다.', transaction);
-    showToast('거래 정보를 불러오지 못했습니다. (ID 누락)', true);
+    console.error('populateFormForEdit: 유효하지 않은 거래 데이터입니다.', transaction);
+    showToast('거래 정보를 불러오지 못했습니다.', true);
     return;
   }
 
   currentEditingTransaction = transaction; 
-  const transactionForm = document.getElementById('transactionForm');
-  if (transactionForm) transactionForm.reset();
-  
-  const modalTitle = document.getElementById('modalTitle');
-  if (modalTitle) modalTitle.textContent = '거래 수정';
+  document.getElementById('transactionForm')?.reset();
+  document.getElementById('modalTitle').textContent = '거래 수정';
 
-  // 공통 입력값
-  const dateInput = document.getElementById('transactionDate');
-  const amountInput = document.getElementById('transactionAmount');
-  const contentInput = document.getElementById('transactionContent');
+  document.getElementById('transactionDate').value = transaction.date || '';
+  document.getElementById('transactionAmount').value = transaction.amount || '';
+  document.getElementById('transactionContent').value = transaction.content || '';
 
-  if (dateInput) dateInput.value = transaction.date || '';
-  if (amountInput) amountInput.value = transaction.amount || '';
-  if (contentInput) contentInput.value = transaction.content || '';
-
-  // 유형 라디오
   document.querySelectorAll('input[name="type"]').forEach(r => {
     r.checked = (r.value === transaction.type);
   });
-  toggleTypeSpecificFields(); // 유형에 따라 관련 필드 표시/숨김
+  toggleTypeSpecificFields();
 
   if (transaction.type === '지출') {
-    const paymentMethodSelect = document.getElementById('paymentMethod');
-    const mainCategorySelect = document.getElementById('mainCategory');
-    const subCategorySelect = document.getElementById('subCategory');
-
-    if (paymentMethodSelect) paymentMethodSelect.value = transaction.paymentMethod || '';
-    if (mainCategorySelect) mainCategorySelect.value = transaction.category1 || '';
-    updateSubCategories(); // 주 카테고리 변경에 따른 하위 카테고리 업데이트
-    if (subCategorySelect) subCategorySelect.value = transaction.category2 || '';
-  } else { // 수입
-    const incomeSourceSelect = document.getElementById('incomeSource');
-    if (incomeSourceSelect) incomeSourceSelect.value = transaction.category1 || ''; // 수입에서는 category1을 수입원으로 사용
+    document.getElementById('paymentMethod').value = transaction.paymentMethod || '';
+    document.getElementById('mainCategory').value = transaction.category1 || '';
+    updateSubCategories(); 
+    document.getElementById('subCategory').value = transaction.category2 || '';
+  } else { 
+    document.getElementById('incomeSource').value = transaction.category1 || '';
   }
-
-  const deleteBtn = document.getElementById('deleteBtn');
-  if (deleteBtn) deleteBtn.style.display = 'block'; // 수정 모드이므로 삭제 버튼 표시
+  document.getElementById('deleteBtn').style.display = 'block';
 }
 
 /* === 탭 & 토스트 === */
@@ -601,9 +639,9 @@ function showView(id){
   if (activeButton) activeButton.classList.add('active');
 
   if(id==='cardView'){
-    cardPerformanceMonthDate = new Date(); // 카드 뷰를 열 때마다 현재 달로 초기화
-    // populateCardSelector(); // 카테고리 등 초기 데이터 로드 시 이미 호출됨
-    displayCardData(); // 카드 선택기가 변경되지 않아도 데이터를 표시하도록
+    cardPerformanceMonthDate = new Date(); 
+    // populateCardSelector(); // 초기 로드 시 이미 호출됨
+    displayCardDataWithMock(); // API 연동 전이므로 목업 데이터 사용
   }
 }
 
@@ -627,21 +665,64 @@ function populateCardSelector(){
   const currentCard = sel.value; 
   sel.innerHTML='<option value="">카드를 선택하세요</option>';
   (paymentMethodsData||[]).filter(m=>m.isCard).forEach(c=>{
-    const o=document.createElement('option'); o.value=o.textContent=c.name; sel.appendChild(o);
+    const o=document.createElement('option'); o.value=c.name; o.textContent=c.name; sel.appendChild(o);
   });
   if (currentCard && sel.querySelector(`option[value="${currentCard}"]`)) {
     sel.value = currentCard; 
-  } else if (sel.options.length > 1) {
-    // sel.value = sel.options[1].value; // 카드가 있다면 첫번째 카드를 자동으로 선택 (선택사항)
   }
 }
 
 function changeCardMonth(d){ 
   cardPerformanceMonthDate.setMonth(cardPerformanceMonthDate.getMonth()+d); 
-  displayCardData(); 
+  displayCardDataWithMock(); // API 연동 전이므로 목업 데이터 사용
 }
 
-function displayCardData(){
+// --- 임시 목업 데이터 사용 함수 ---
+function displayCardDataWithMock() {
+  const cardSel = document.getElementById('cardSelector');
+  const det = document.getElementById('cardDetails');
+  const lbl = document.getElementById('cardMonthLabel');
+  const loader = document.getElementById('loader');
+
+  if (!cardSel || !det || !lbl) return;
+  const cardName = cardSel.value;
+
+  if (!cardName){
+    det.innerHTML = '<p>카드를 선택해주세요.</p>';
+    lbl.textContent = '';
+    return;
+  }
+  if(loader) loader.style.display = 'block';
+
+  const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
+  lbl.textContent = `${perfMonth} 기준`;
+
+  console.warn(`[App.js] displayCardDataWithMock for card: ${cardName}. API connection needed.`);
+  // 예시 목업 데이터
+  const cardInfo = paymentMethodsData.find(m => m.name === cardName);
+  const mockData = {
+    cardName: cardName,
+    billingMonth: currentCycleMonth,
+    billingAmount: Math.floor(Math.random() * 500000),
+    performanceReferenceMonth: perfMonth,
+    performanceAmount: Math.floor(Math.random() * (cardInfo?.target || 500000)),
+    performanceTarget: cardInfo?.target || 0,
+  };
+  mockData.rate = mockData.performanceTarget > 0 ? ((mockData.performanceAmount / mockData.performanceTarget) * 100).toFixed(1) + '%' : '0%';
+
+  det.innerHTML = `
+    <h4>${mockData.cardName} (목업 데이터)</h4>
+    <p><strong>청구 기준월:</strong> ${mockData.billingMonth} (18일~다음달 17일)</p>
+    <p><strong>청구 예정 금액:</strong> ${mockData.billingAmount.toLocaleString()}원</p><hr>
+    <p><strong>실적 산정월:</strong> ${mockData.performanceReferenceMonth}</p>
+    <p><strong>현재 사용액(실적):</strong> ${mockData.performanceAmount.toLocaleString()}원</p>
+    <p><strong>실적 목표 금액:</strong> ${mockData.performanceTarget.toLocaleString()}원</p>
+    <p><strong>달성률:</strong> ${mockData.rate}</p>
+    <p style="font-size:0.8em;color:grey;">(이것은 실제 데이터가 아닌 임시 목업 데이터입니다.)</p>`;
+  if(loader) loader.style.display = 'none';
+}
+
+async function displayCardData() { // API 연동 시 사용할 함수
   const cardSel = document.getElementById('cardSelector');
   const det = document.getElementById('cardDetails');
   const lbl = document.getElementById('cardMonthLabel');
@@ -655,55 +736,51 @@ function displayCardData(){
     lbl.textContent = '';
     return;
   }
-
   if(loader) loader.style.display = 'block';
 
   const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
   lbl.textContent = `${perfMonth} 기준`;
 
-  // !! 중요 !!
-  // google.script.run은 외부 호스팅에서 수정 필요. 임시 데이터 또는 UI 표시.
-  console.warn("displayCardData: google.script.run.getCardData 호출은 외부 호스팅에서 수정 필요합니다.");
-  det.innerHTML = `<p>${card} 카드 데이터를 불러오는 중... (서버 연동 필요)</p>`;
-  if(loader) loader.style.display = 'none';
+  try {
+    const d = await callAppsScriptApi('getCardData', { 
+      cardName: card, 
+      cycleMonthForBilling: currentCycleMonth, // 현재 달력 주기월을 청구 기준월로 우선 사용
+      performanceReferenceMonth: perfMonth      // 카드 실적 조회 기준월
+    });
 
-  /* // 기존 google.script.run 호출 부분
-  google.script.run
-    .withSuccessHandler(d => {
-      if(loader) loader.style.display = 'none';
-      if (!d || d.error){
-        det.innerHTML = `<p>${d ? d.error : '카드 데이터 오류'}</p>`;
-        return;
-      }
-      const billingMonth = d.cycleMonthForBilling || d.billingCycleMonthForCard || '확인 필요';
-      const perfRefMonth = d.actualCurrentCalendarMonth || d.performanceReferenceMonth || perfMonth;
-      const billingAmt = Number(d.billingAmount) || 0;
-      const perfAmt = Number(d.performanceAmount) || 0;
-      const targetAmt = Number(d.performanceTarget) || 0;
-      const rate = targetAmt > 0 ? ((perfAmt/targetAmt)*100).toFixed(1)+'%' : '0%';
+    if (!d || d.error){ // API가 {success:false, error:"..."} 또는 그냥 에러 객체를 반환한 경우
+      det.innerHTML = `<p>${d && d.error ? d.error : '카드 데이터 로딩 오류'}</p>`;
+      throw new Error(d && d.error ? d.error : '카드 데이터 구조 오류');
+    }
+    
+    const billingMonth = d.billingCycleMonthForCard || currentCycleMonth; // 서버에서 받은 청구월 우선
+    const perfRefMonthDisplay = d.performanceReferenceMonthForDisplay || perfMonth; // 서버에서 받은 실적월 우선
+    const billingAmt = Number(d.billingAmount) || 0;
+    const perfAmt = Number(d.performanceAmount) || 0;
+    const targetAmt = Number(d.performanceTarget) || 0;
+    const rate = targetAmt > 0 ? ((perfAmt/targetAmt)*100).toFixed(1)+'%' : '0%';
 
-      det.innerHTML = `
-        <h4>${d.cardName || card}</h4>
-        <p><strong>청구 기준월:</strong> ${billingMonth} (18일~다음달 17일)</p>
-        <p><strong>청구 예정 금액:</strong> ${billingAmt.toLocaleString()}원</p><hr>
-        <p><strong>실적 산정월:</strong> ${perfRefMonth}</p>
-        <p><strong>현재 사용액(실적):</strong> ${perfAmt.toLocaleString()}원</p>
-        <p><strong>실적 목표 금액:</strong> ${targetAmt.toLocaleString()}원</p>
-        <p><strong>달성률:</strong> ${rate}</p>
-        <p style="font-size:0.8em;color:grey;">(실적은 카드사의 실제 집계와 다를 수 있습니다)</p>`;
-    })
-    .withFailureHandler(err => {
-      if(loader) loader.style.display = 'none';
-      det.innerHTML = '<p>카드 데이터를 불러오는 데 실패했습니다.</p>';
-      console.error('getCardData 실패', err);
-      showToast('카드 데이터 로드 중 오류가 발생했습니다.', true);
-    })
-    .getCardData(card, currentCycleMonth, perfMonth); // currentCycleMonth도 전달 (필요시 백엔드에서 사용)
-  */
+    det.innerHTML = `
+      <h4>${d.cardName || card}</h4>
+      <p><strong>청구 기준월:</strong> ${billingMonth} (18일~다음달 17일)</p>
+      <p><strong>청구 예정 금액:</strong> ${billingAmt.toLocaleString()}원</p><hr>
+      <p><strong>실적 산정월:</strong> ${perfRefMonthDisplay}</p>
+      <p><strong>현재 사용액(실적):</strong> ${perfAmt.toLocaleString()}원</p>
+      <p><strong>실적 목표 금액:</strong> ${targetAmt.toLocaleString()}원</p>
+      <p><strong>달성률:</strong> ${rate}</p>
+      <p style="font-size:0.8em;color:grey;">(실적은 카드사의 실제 집계와 다를 수 있습니다)</p>`;
+  } catch (error) {
+    det.innerHTML = '<p>카드 데이터를 불러오는 데 실패했습니다.</p>';
+    console.error('displayCardData API call failed:', error);
+    showToast('카드 데이터 로드 중 오류 발생', true);
+  } finally {
+    if(loader) loader.style.display = 'none';
+  }
 }
+// --- 임시 목업 데이터 사용 함수 끝 ---
 
 /* === 거래 삭제 === */
-function handleDelete() {
+async function handleDelete() {
   if (!currentEditingTransaction || typeof currentEditingTransaction.row === 'undefined') {
     showToast('삭제할 거래를 먼저 선택하거나, 유효한 거래가 아닙니다.', true);
     return;
@@ -715,44 +792,33 @@ function handleDelete() {
   const key = 'transactions_' + currentCycleMonth;
   const originalData = JSON.parse(localStorage.getItem(key) || '[]');
   
-  // 프런트 즉시 반영 (Optimistic Update)
   const filteredData = originalData.filter(t => t && typeof t.row !== 'undefined' && t.row.toString() !== rowId.toString());
   localStorage.setItem(key, JSON.stringify(filteredData));
   renderCalendarAndSummary(filteredData);
   closeModal();
   showToast(isTemp ? '임시 입력을 삭제했습니다.' : '삭제를 서버에 전송 중...');
 
-  if (isTemp) return; // 임시 항목은 서버에 삭제 요청 불필요
+  if (isTemp) return; 
 
-  // !! 중요 !!
-  // google.script.run은 외부 호스팅에서 수정 필요.
-  console.warn("handleDelete: google.script.run.deleteTransaction 호출은 외부 호스팅에서 수정 필요합니다.");
-  // 임시로 성공 처리
-  setTimeout(() => {
-    showToast('삭제 완료 (실제 서버 연동 필요)', false);
-    // 실제로는 서버에서 최신 데이터를 다시 받아와야 함
-    // google.script.run.getTransactions(currentCycleMonth)...
-  }, 1000);
+  // 서버에 실제 작업 요청 (API 연동 시)
+  try {
+    // const serverResult = await callAppsScriptApi('deleteTransaction', { id_to_delete: Number(rowId) }); // POST 방식이 더 적합
 
-  /* // 기존 google.script.run 호출 부분
-  google.script.run
-    .withSuccessHandler(res => {
-      if (!res || !res.success) {
-        localStorage.setItem(key, JSON.stringify(originalData)); // 실패 시 롤백
-        renderCalendarAndSummary(originalData);
-        showToast(res?.message || '삭제 실패!', true);
-      } else {
-        showToast('삭제 완료!');
-        // 성공 시 이미 localStorage는 업데이트 되었으므로, 화면만 최신 상태임.
-        // 필요하다면 여기서 getTransactions를 다시 호출하여 서버와 완벽 동기화.
-      }
-    })
-    .withFailureHandler(err => {
-      localStorage.setItem(key, JSON.stringify(originalData)); // 실패 시 롤백
-      renderCalendarAndSummary(originalData);
-      showToast('삭제 실패! 네트워크를 확인하세요.', true);
-      console.error('deleteTransaction 실패:', err);
-    })
-    .deleteTransaction(Number(rowId)); // rowId는 실제 시트 행 번호여야 함
-  */
+    // 임시: 지금은 google.script.run이 없으므로 콘솔에만 기록
+    console.warn(`[App.js] handleDelete: Server call for rowId ${rowId} (API connection needed)`);
+    const serverResult = { success: true, message: "삭제 임시 성공" }; // 가짜 성공 응답
+
+    if (serverResult.success) {
+      showToast(serverResult.message || '삭제 완료!', false);
+      // 성공 시 데이터는 이미 UI/localStorage에서 제거됨. 필요 시 서버에서 전체 목록 다시 로드.
+      // await updateCalendarDisplay(); // API 연동 후 주석 해제
+    } else {
+      throw new Error(serverResult.message || '서버에서 삭제 실패');
+    }
+  } catch (error) {
+    showToast(`삭제 실패! (${error.message})`, true);
+    // 오류 발생 시 Optimistic Update 롤백
+    localStorage.setItem(key, JSON.stringify(originalData));
+    renderCalendarAndSummary(originalData);
+  }
 }
