@@ -1,0 +1,32 @@
+{
+  "name": "나의 스마트 가계부",
+  "short_name": "스마트가계부",
+  "id": "smart-account-book-gh", // GitHub Pages용으로 id를 약간 변경해도 좋습니다 (선택 사항).
+  "description": "GitHub Pages로 호스팅되는 나만의 스마트 가계부",
+  "lang": "ko-KR",
+  // ★★★ 수정된 부분 시작 ★★★
+  "start_url": ".", // 또는 "./index.html" - 현재 manifest.json 파일이 있는 위치를 기준으로 시작합니다.
+                  // 만약 GitHub 저장소 이름이 'my-budget-app'이고,
+                  // https://username.github.io/my-budget-app/ 에서 앱이 실행된다면,
+                  // "." 는 /my-budget-app/ 을 의미하게 됩니다.
+  "scope": ".",     // 서비스 워커의 제어 범위도 현재 위치 기준으로 설정합니다.
+  // ★★★ 수정된 부분 끝 ★★★
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f4f7f6", // 원하시는 배경색으로 지정
+  "theme_color": "#3498db",       // 원하시는 테마색으로 지정
+  "icons": [
+    { 
+      "src": "icons/icon-192.png",  // icons 폴더 안의 icon-192.png (manifest.json 기준 상대 경로)
+      "sizes": "192x192", 
+      "type": "image/png",
+      "purpose": "any"
+    },
+    { 
+      "src": "icons/icon-512.png",  // icons 폴더 안의 icon-512.png
+      "sizes": "512x512", 
+      "type": "image/png",
+      "purpose": "any maskable"  // maskable 아이콘 지원
+    }
+  ]
+}

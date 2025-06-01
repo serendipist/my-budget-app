@@ -1,0 +1,440 @@
+:root {
+  /* ① JS가 덮어쓸 실제 높이(px) 변수 – 기본값 100 vh */
+  --vh: 100vh;
+
+  /* ② 달력 크기 관련 변수 (요구사항 최종 반영) */
+  --calendar-total-height: 75vh;
+  --calendar-header-row-height: 2.42vh;
+  --calendar-date-row-height: 12.09vh;
+
+  /* ③ 색상 및 테두리 변수 */
+  --text-main-color: #333;
+  --text-secondary-color: #555;
+  --border-color: #ddd;
+  --highlight-bg-color: #e8f4f8;
+  --sunday-text-color: #e74c3c;
+  --saturday-text-color: #007bff;
+  --income-bg-color: #d1e7dd;
+  --income-text-color: #0a3622;
+  --expense-bg-color: #f8d7da;
+  --expense-text-color: #58151c;
+
+  /* ④ 폰트 크기 변수 (선생님께서 마지막으로 주신 값을 유지) */
+  --font-size-base: 18px;
+  --font-size-sm: 0.9rem;
+  --font-size-md: 1.9rem;
+  --font-size-lg: 1.0rem;
+  --font-size-xl: 1.0rem;
+
+  /* ⑤ 모달 전용 폰트 크기 (데스크탑용) */
+  --modal-font-size-base: 2.5rem;
+  --modal-font-size-sm: 2.2rem;
+  --modal-font-size-md: 2.5rem;
+  --modal-font-size-lg: 2.8rem;
+  --modal-font-size-xl: 3.2rem;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background: #f4f7f6;
+  color: var(--text-main-color);
+  font-size: var(--font-size-base);
+  line-height: 1.6;
+  box-sizing: border-box;
+}
+
+*, *::before, *::after {
+  box-sizing: inherit;
+}
+
+.container {
+  max-width: 900px;
+  margin: 20px auto;
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 0 15px rgba(0,0,0,.1);
+}
+.modal-action-btn {
+  flex: 1;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-size: calc(var(--modal-font-size-lg) * 0.9);
+  font-weight: bold;
+  cursor: pointer;
+}
+
+/* 탭 네비게이션 */
+.tab-navigation { display:flex; border-bottom:2px solid var(--border-color); margin-bottom:20px; }
+.tab-button {
+  padding: 12px 25px;
+  cursor:pointer; background:#eee; border:1px solid var(--border-color);
+  border-bottom:none; margin-right:5px; border-radius:5px 5px 0 0;
+  font-size: var(--font-size-lg); 
+  font-weight: bold;
+}
+.tab-button.active { background:#fff; border-bottom:2px solid #fff; position:relative; top:2px; color:#2c3e50; }
+.tab-content { display:none; }
+.tab-content.active { display:block; }
+
+/* 이전/다음 달 네비게이션 */
+.calendar-nav, .card-month-nav { display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; padding:15px; background:#e9ecef; border-radius:5px; }
+.calendar-nav h2, .card-month-nav span { margin:0; font-size: var(--font-size-xl); color:#2c3e50; font-weight:bold; }
+.nav-btn {
+  padding:10px 20px;
+  background:#3498db; color:#fff; border:none; border-radius:4px; cursor:pointer;
+  font-size: var(--font-size-md);
+  font-weight: bold;
+}
+.nav-btn:hover { background:#2980b9; }
+
+/* 요약 정보 */
+.summary { display:flex; justify-content:space-around; margin-bottom:20px; padding:20px; background:#f8f9fa; border-radius:5px; text-align:center; }
+.summary div { flex:1; padding:0 10px; }
+.summary h3 { margin:0 0 8px; font-size: var(--font-size-md); color:var(--text-secondary-color); }
+.summary p { margin:0; font-size: var(--font-size-lg); font-weight:bold; }
+ 
+/* 달력 */
+#calendarGrid {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  height: var(--calendar-total-height);
+}
+
+#calendarGrid th,
+#calendarGrid td {
+  border: 1px solid var(--border-color);
+  padding: 4px; 
+  text-align: left;
+  vertical-align: top;
+  overflow: hidden;
+}
+
+#calendarGrid th { 
+  background: #f2f2f2;
+  text-align: center;
+  height: var(--calendar-header-row-height);
+  font-size: 2em;
+  font-weight: bold;
+  vertical-align: middle;
+}
+
+#calendarGrid td {
+  height: var(--calendar-date-row-height);
+}
+#calendarGrid td:hover { background:var(--highlight-bg-color); cursor:pointer; }
+
+#calendarGrid .date-number {
+  font-weight:bold;
+  display:block;
+  margin-bottom:4px;
+  font-size: 2.2em;
+  text-align: center;
+  padding-top: 5px;
+}
+#calendarGrid .other-month .date-number { color:#ccc; }
+
+.transaction-item {
+  font-size: var(--font-size-md); 
+  font-weight: bold;
+  margin: 2px 0;
+  padding: 2px 4px;
+  border-radius: 3px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  display:block;
+  text-align: right;
+}
+.income { color:#28a745; }
+.expense { color:var(--sunday-text-color); }
+
+/* === 모달 스타일 (데스크탑용) === */
+.modal {
+  display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%;
+  overflow:hidden; 
+  background:rgba(0,0,0,.5);
+  align-items: center;
+  justify-content: center;
+}
+.modal-content {
+  background: #fff;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0,0,0,.35);
+  width: 85vw;
+  max-width: 900px; 
+  height: 75vh;
+  display: flex;
+  flex-direction: column;
+  position: relative; 
+}
+.close-button {
+  position: absolute; 
+  top: 20px; right: 25px;
+  color:#aaa; font-size:var(--modal-font-size-lg);
+  font-weight:bold; cursor:pointer;
+  line-height: 1; 
+  padding: 5px;
+}
+.close-button:hover { color:#000; }
+
+.modal-content h3 {
+  margin-top:0; margin-bottom: 30px;
+  color:var(--text-main-color); flex-shrink: 0;
+  font-size: var(--modal-font-size-xl);
+  font-weight: bold;
+  text-align: center;
+}
+
+.form-row {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+.form-row > div {
+  flex: 1; 
+}
+.form-row label, .modal-content > form > label {
+  display:block; margin-bottom:8px;
+  font-weight:bold; color:var(--text-secondary-color);
+  font-size: var(--modal-font-size-md);
+}
+
+.modal-content input[type=date],
+.modal-content input[type=number],
+.modal-content input[type=text],
+.modal-content select {
+  width: 100%; 
+  padding: 15px 18px;
+  margin-bottom: 0; 
+  border: 1px solid #ccc; border-radius: 6px;
+  font-size: var(--modal-font-size-md);
+  line-height: normal;
+}
+.modal-content input, .modal-content select {
+    height: calc(var(--modal-font-size-md) * 1.5 + 30px + 2px);
+}
+
+
+#transactionForm {
+  overflow-y: auto; 
+  flex-grow: 1; 
+  padding-right: 10px;
+}
+
+
+#expenseSpecificFields, #incomeSpecificFields { display:none; flex-shrink: 0; }
+.form-radio-group { margin-bottom: 15px; }
+.form-radio-group label { display:inline-block; margin-right:25px; font-weight:normal; font-size:var(--modal-font-size-md); }
+.form-radio-group input { margin-right:10px; vertical-align:middle; transform: scale(1.5); }
+
+#dailyTransactionsContainer {
+    flex-shrink: 0; 
+    margin-bottom: 20px;
+}
+#toggleDailyTransactions {
+  background: #6c757d; color: white; border: none; padding: 10px 18px;
+  font-size: var(--modal-font-size-sm);
+  border-radius: 4px; cursor: pointer; margin-bottom: 10px;
+}
+#toggleDailyTransactions:hover { background: #5a6268; }
+
+#dailyTransactions strong { font-size:var(--modal-font-size-md); color:var(--text-main-color); margin-bottom: 8px; display: block; }
+#dailyTransactionList {
+  font-size: var(--modal-font-size-md);
+  max-height: 200px;
+  overflow-y: auto;
+  background: #f9f9f9; padding: 12px; border-radius: 4px;
+}
+#dailyTransactionList div { padding:8px 0; border-bottom:1px dashed #eee; }
+#dailyTransactionList div:last-child { border-bottom:none; }
+
+/* 기타 스타일 */
+.loader { border:5px solid #f3f3f3; border-top:5px solid #3498db; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:20px auto; display:none; }
+@keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+ 
+#cardViewContent label { font-weight:bold; font-size:var(--font-size-md); margin-right:5px; }
+#cardViewContent select { padding:10px 12px; margin-bottom:15px; border-radius:4px; border:1px solid #ccc; font-size:var(--font-size-md); }
+#cardDetails h4 { margin-top:0; color:#2c3e50; font-size: var(--font-size-lg); }
+#cardDetails p { margin:8px 0; font-size:var(--font-size-md); line-height:1.6; }
+#toast { font-size:var(--font-size-md); visibility:hidden;position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:15px 25px;border-radius:5px;z-index:2000;opacity:0;transition:opacity .5s, visibility .5s; }
+
+/* 요일 색상 */
+#calendarGrid th:nth-child(1) { color:var(--sunday-text-color); }
+#calendarGrid td:nth-child(1) .date-number { color:var(--sunday-text-color); }
+#calendarGrid th:nth-child(7) { color:var(--saturday-text-color); }
+#calendarGrid td:nth-child(7) .date-number { color:var(--saturday-text-color); }
+
+/* ── 요약 정보 색상 ─────────────────────── */
+.summary p.total-income {
+  color: #28a745;
+}
+.summary p.total-expense {
+  color: var(--sunday-text-color);
+}
+.summary p.total-balance.negative {
+  color: var(--sunday-text-color);
+}
+
+/* ── 모달 내 거래 내역 배경색 ─────────────────────────── */
+#dailyTransactionList .transaction-item.income {
+  background: var(--income-bg-color);
+  color: var(--text-main-color); 
+}
+#dailyTransactionList .transaction-item.expense {
+  background: var(--expense-bg-color);
+  color: var(--text-main-color);
+}
+
+/* ================================================================== */
+/* ★★★★★★★★★★★★★★★ 모바일 화면 스타일 최종 정리본 ★★★★★★★★★★★★★★★ */
+/* ================================================================== */
+@media (max-width: 768px) { 
+  /* --- 태블릿 반응형 스타일 (데스크탑 모달 변수 오버라이드) --- */
+  .modal-content {
+    width: 90vw; 
+    height: 75vh;
+  }
+  #calendarGrid th { font-size: 1.8em; } 
+  #calendarGrid .date-number { font-size: 2em; }
+   
+  /* 태블릿 모달용 폰트 변수 재선언 */
+  .modal-content {
+      --modal-font-size-base: 2rem;
+      --modal-font-size-sm: 1.8rem;
+      --modal-font-size-md: 2rem;
+      --modal-font-size-lg: 2.2rem;
+      --modal-font-size-xl: 2.5rem;
+  }
+}
+
+@media (max-width: 480px) { 
+  body { 
+    font-size: 16px; /* 모바일 기본 폰트 크기 고정 */
+  }
+   
+  /* 1. 탭 버튼 (달력, 카드) */
+  .tab-button { 
+    padding: 10px 15px; 
+    font-size: 1.1rem;
+  }
+
+  /* 2. 월 이동 네비게이션 */
+  .calendar-nav h2, .card-month-nav span { 
+    font-size: 1.2rem;
+  }
+  .nav-btn { 
+    padding: 6px 12px; 
+    font-size: 0.8rem;
+  }
+   
+  /* 3. 요약 정보 (총수입, 총지출, 합계) */
+  .summary { 
+    padding: 15px; 
+    gap: 10px;
+    align-items: center;
+  }
+  .summary h3 { 
+    font-size: 0.8rem;
+    margin-bottom: 4px;
+  }
+  .summary p {
+    font-size: 0.9rem;
+    word-break: break-all;
+  }
+
+  /* 4. 달력 내부 */
+  #calendarGrid th { font-size: 0.8rem; }
+  #calendarGrid .date-number { font-size: 1.1rem; }
+  .transaction-item { font-size: 0.7rem; }
+
+  /* 5. 카드 탭 내부 */
+  #cardViewContent label,
+  #cardViewContent select {
+    font-size: 1.0rem;
+  }
+  #cardDetails h4 {
+    font-size: 1.2rem;
+  }
+  #cardDetails p {
+    font-size: 1.0rem;
+  }
+
+  /* 6. 모달 창 (컴팩트하게 재설계) */
+  .modal-content {
+    width: 95vw;
+    height: auto;
+    max-height: 90vh;
+    margin: auto; 
+    padding: 12px;
+  }
+  .modal-content h3 {
+    font-size: 1.2rem; 
+    margin-bottom: 12px; 
+  }
+  .form-row { flex-direction: column; gap: 0; margin-bottom: 0; } 
+  .form-row > div { margin-bottom: 8px; }
+.modal-content label {
+  font-size: 0.8rem;         /* << 0.8rem에서 0.7rem으로 대폭 축소 */
+  margin-bottom: 4px;
+  font-weight: bold;         /* << 작은 글씨 식별 위해 굵게 처리 */
+  color: var(--text-secondary-color); /* << 약간 연한 색으로 변경해 구분감 부여 */
+}
+  .modal-content input, .modal-content select {
+    padding: 8px 10px; 
+    font-size: 0.9rem;
+    height: auto;
+  }
+.modal-content .form-radio-group label {
+   font-size: 0.8rem;         /* << 라디오 버튼 텍스트는 0.8rem으로 통일 */
+   font-weight: normal;       /* << 라디오 버튼 텍스트는 굵지 않게 */
+   color: var(--text-main-color); /* << 원래 글자색으로 */
+}
+  .modal-content .form-radio-group input {
+    transform: scale(1.2);
+  }
+
+  .close-button {
+    top: 8px; 
+    right: 10px; 
+    font-size: 1.3rem; 
+    padding: 0;
+  }
+  #toggleDailyTransactions {
+    font-size: 0.8rem; 
+    padding: 5px 8px;
+  }
+  #dailyTransactions strong {
+    font-size: 0.9rem;
+  }
+  #dailyTransactionList {
+    max-height: 80px;
+    padding: 8px;
+  }
+  #dailyTransactionList .transaction-item {
+    font-size: 0.8rem;
+    padding: 4px 6px;
+    margin: 4px 0;
+    border-radius: 2px;
+    font-weight: normal;
+  }
+}
+@media (max-width: 480px) {
+
+/* 1. '날짜:', '유형:' 등 폼 라벨을 정확히 지정하여 수정 */
+.form-row label, .modal-content > form > label {
+  font-size: 0.7rem !important; /* 폰트 크기를 강제 적용 */
+  font-weight: bold;
+}
+
+/* 2. 입력 칸(input, select)의 물리적인 크기 축소 */
+.modal-content input, .modal-content select {
+  padding: 6px 8px !important;  /* 내부 여백을 대폭 축소 */
+  height: auto !important;     /* 계산된 고정 높이 제거 */
+  font-size: 0.9rem !important;/* 폰트 크기도 확실히 적용 */
+}
+}
