@@ -536,28 +536,34 @@ function populateFormForEdit(transaction) {
 
 // ⚠️ 새 함수: 하위 카테고리 업데이트 후 값 설정
 function updateSubCategoriesAndSetValue(subCategoryValue) {
-  updateSubCategories(); // 하위 카테고리 목록 업데이트
+  updateSubCategories();
   
-  // MutationObserver로 DOM 변경 감지 후 값 설정
-  const subCategorySelect = document.getElementById('subCategory');
-  
-  // 이미 옵션이 있다면 바로 설정
-  if (subCategorySelect.options.length > 1) {
-    subCategorySelect.value = subCategoryValue;
-    console.log('[updateSubCategoriesAndSetValue] 하위 카테고리 즉시 설정:', subCategoryValue);
-    return;
-  }
-  
-  // 옵션이 없다면 변경 감지 후 설정
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.type === 'childList' && subCategorySelect.options.length > 1) {
+  return new Promise((resolve) => {
+    const subCategorySelect = document.getElementById('subCategory');
+    
+    function checkAndSet() {
+      if (subCategorySelect.options.length > 1) {
         subCategorySelect.value = subCategoryValue;
-        console.log('[updateSubCategoriesAndSetValue] 하위 카테고리 지연 설정:', subCategoryValue);
-        observer.disconnect(); // 감지 중단
+        console.log('[updateSubCategoriesAndSetValue] 하위 카테고리 설정 완료:', subCategoryValue);
+        resolve();
+      } else {
+        setTimeout(checkAndSet, 10); // 10ms마다 확인
       }
-    });
+    }
+    
+    checkAndSet();
   });
+}
+
+// populateFormForEdit에서 사용
+if (transaction.type === '지출') {
+  document.getElementById('paymentMethod').value = transaction.paymentMethod || '';
+  document.getElementById('mainCategory').value = transaction.category1 || '';
+  
+  // Promise 기반으로 처리
+  updateSubCategoriesAndSetValue(transaction.category2 || '');
+}
+
   
   observer.observe(subCategorySelect, { childList: true });
   
