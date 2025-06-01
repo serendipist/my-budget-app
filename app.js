@@ -1,4 +1,4 @@
-// app.js - 완전 개선된 버전
+// app.js - 개선된 버전
 const EXPENSE_CATEGORIES_CACHE_KEY = 'expenseCategoriesCache_v2';
 const PAYMENT_METHODS_CACHE_KEY = 'paymentMethodsCache_v2';
 const INCOME_SOURCES_CACHE_KEY = 'incomeSourcesCache_v2';
@@ -27,7 +27,7 @@ const Utils = {
   // 메모이제이션 헬퍼
   memoize(fn, ttl = 60000) {
     const cache = new Map();
-    const memoized = (...args) => {
+    return (...args) => {
       const key = JSON.stringify(args);
       const cached = cache.get(key);
       if (cached && Date.now() - cached.timestamp < ttl) {
@@ -38,8 +38,6 @@ const Utils = {
       setTimeout(() => cache.delete(key), ttl);
       return result;
     };
-    memoized.cache = cache; // 캐시 접근을 위해 노출
-    return memoized;
   },
 
   // 디바운스
@@ -691,114 +689,6 @@ function invalidateTransactionCache() {
   AppState.memoryCache.delete(key.replace('transactions_', ''));
 }
 
-/* === 카테고리 데이터 검증 === */
-function validateCategoryData() {
-  if (!AppState.expenseCategoriesData || Object.keys(AppState.expenseCategoriesData).length === 0) {
-    console.error('[validateCategoryData] 비용 카테고리 데이터가 없습니다.');
-    showToast('카테고리 데이터를 불러오지 못했습니다. 새로고침을 시도해주세요.', true);
-    return false;
-  }
-  return true;
-}
-
-/* === 개선된 populateFormForEdit 함수 === */
-function populateFormForEdit(transaction) {
-  if (!transaction || typeof transaction.row === 'undefined') {
-    console.error('[populateFormForEdit] 유효하지 않은 거래 데이터입니다:', transaction);
-    showToast('거래 정보를 불러오지 못했습니다. (ID 누락)', true); 
-    return;
-  }
-
-  console.log('[populateFormForEdit] 수정할 거래 데이터:', JSON.parse(JSON.stringify(transaction)));
-  
-  // 카테고리 데이터 유효성 검사
-  if (transaction.type === '지출' && !validateCategoryData()) {
-    return;
-  }
-  
-  AppState.currentEditingTransaction = transaction; 
-  
-  const form = document.getElementById('transactionForm');
-  if (form) form.reset();
-  
-  document.getElementById('modalTitle').textContent = '거래 수정';
-
-  // 공통 필드 채우기
-  document.getElementById('transactionDate').value = transaction.date || '';
-  document.getElementById('transactionAmount').value = transaction.amount || '';
-  document.getElementById('transactionContent').value = transaction.content || '';
-
-  // 거래 유형 라디오 버튼 설정
-  document.querySelectorAll('input[name="type"]').forEach(r => {
-    r.checked = (r.value === transaction.type);
-  });
-  
-  toggleTypeSpecificFields(); // 유형에 따라 관련 필드 표시/숨김
-
-  // 유형별 특정 필드 채우기
-  if (transaction.type === '지출') {
-    console.log('[populateFormForEdit] 지출 유형 수정 시작');
-    
-    // 결제수단 설정
-    const paymentMethodSelect = document.getElementById('paymentMethod');
-    if (paymentMethodSelect) {
-      paymentMethodSelect.value = transaction.paymentMethod || '';
-      console.log(`[populateFormForEdit] 결제수단 설정: '${transaction.paymentMethod}' -> '${paymentMethodSelect.value}'`);
-    }
-    
-    // 주 카테고리 설정
-    const mainCategorySelect = document.getElementById('mainCategory');
-    if (mainCategorySelect) {
-      mainCategorySelect.value = transaction.category1 || ''; 
-      console.log(`[populateFormForEdit] 주 카테고리 설정 시도: '${transaction.category1}' -> 실제: '${mainCategorySelect.value}'`);
-      
-      // 주 카테고리 설정 확인 및 재시도
-      if (transaction.category1 && mainCategorySelect.value !== transaction.category1) {
-        console.warn(`[populateFormForEdit] 주 카테고리 설정 실패. 사용 가능한 옵션:`, 
-          Array.from(mainCategorySelect.options).map(opt => opt.value));
-      }
-    }
-
-    // 하위 카테고리 업데이트를 비동기적으로 처리
-    setTimeout(() => {
-      // 메모이제이션 캐시 클리어 (필요시)
-      if (updateSubCategories.cache) {
-        updateSubCategories.cache.clear();
-      }
-      
-      updateSubCategories(); // 주 카테고리 값에 따라 하위 카테고리 목록 업데이트
-      console.log('[populateFormForEdit] updateSubCategories() 호출 완료');
-      
-      const subCategorySelect = document.getElementById('subCategory');
-      if (subCategorySelect) {
-        console.log('[populateFormForEdit] 현재 하위 카테고리 옵션들:');
-        Array.from(subCategorySelect.options).forEach(opt => 
-          console.log(`  - Value: '${opt.value}', Text: '${opt.text}'`));
-        
-        // 하위 카테고리 설정
-        subCategorySelect.value = transaction.category2 || '';
-        console.log(`[populateFormForEdit] 하위 카테고리 설정 시도: '${transaction.category2}' -> 실제: '${subCategorySelect.value}'`);
-        
-        // 하위 카테고리 설정 확인 및 경고
-        if (transaction.category2 && subCategorySelect.value !== transaction.category2) {
-          console.warn(`[populateFormForEdit] 하위 카테고리 '${transaction.category2}' 설정 실패`);
-          showToast(`하위 카테고리 '${transaction.category2}'를 찾을 수 없습니다.`, true);
-        }
-      }
-    }, 50); // 50ms 지연으로 DOM 업데이트 대기
-
-  } else if (transaction.type === '수입') {
-    console.log('[populateFormForEdit] 수입 유형 수정 시작');
-    const incomeSourceSelect = document.getElementById('incomeSource');
-    if (incomeSourceSelect) {
-      incomeSourceSelect.value = transaction.category1 || '';
-      console.log(`[populateFormForEdit] 수입원 설정: '${transaction.category1}' -> '${incomeSourceSelect.value}'`);
-    }
-  }
-
-  document.getElementById('deleteBtn').style.display = 'block';
-}
-
 /* === UI 상태 관리 === */
 function showLoadingState(show, type = 'global') {
   const loaders = {
@@ -817,22 +707,7 @@ function showLoadingState(show, type = 'global') {
   }
 }
 
-/* === 디버깅 헬퍼 함수 === */
-function debugFormState() {
-  console.log('=== 폼 상태 디버깅 ===');
-  console.log('현재 수정 중인 거래:', AppState.currentEditingTransaction);
-  console.log('주 카테고리 값:', document.getElementById('mainCategory').value);
-  console.log('하위 카테고리 값:', document.getElementById('subCategory').value);
-  console.log('사용 가능한 주 카테고리:', Object.keys(AppState.expenseCategoriesData));
-  
-  const mainCat = document.getElementById('mainCategory').value;
-  if (mainCat && AppState.expenseCategoriesData[mainCat]) {
-    console.log(`'${mainCat}'의 하위 카테고리:`, AppState.expenseCategoriesData[mainCat]);
-  }
-  console.log('===================');
-}
-
-/* === 나머지 함수들 === */
+/* === 나머지 함수들 (간소화된 버전) === */
 function determineInitialCycleMonth() {
   const today = new Date();
   let year = today.getFullYear();
@@ -905,39 +780,20 @@ const updateSubCategories = Utils.memoize(function() {
   const mainCategorySelect = document.getElementById('mainCategory');
   const subCategorySelect = document.getElementById('subCategory');
   
-  if (!mainCategorySelect || !subCategorySelect) {
-    console.warn('[updateSubCategories] 주 카테고리 또는 하위 카테고리 select 요소를 찾을 수 없습니다.');
-    return;
-  }
+  if (!mainCategorySelect || !subCategorySelect) return;
 
   const mainCategoryValue = mainCategorySelect.value;
-  console.log(`[updateSubCategories] 주 카테고리 값: '${mainCategoryValue}'`);
-  
-  // 기존 하위 카테고리 옵션 저장 (복원용)
-  const currentSubValue = subCategorySelect.value;
-  
   subCategorySelect.innerHTML = '<option value="">선택하세요</option>';
 
   if (AppState.expenseCategoriesData[mainCategoryValue]) {
-    const subCategories = AppState.expenseCategoriesData[mainCategoryValue];
-    console.log(`[updateSubCategories] 하위 카테고리 ${subCategories.length}개 추가:`, subCategories);
-    
-    subCategories.forEach(subCategory => {
+    AppState.expenseCategoriesData[mainCategoryValue].forEach(subCategory => {
       const option = document.createElement('option');
       option.value = subCategory;
       option.textContent = subCategory;
       subCategorySelect.appendChild(option);
     });
-    
-    // 이전 값 복원 시도
-    if (currentSubValue && subCategories.includes(currentSubValue)) {
-      subCategorySelect.value = currentSubValue;
-      console.log(`[updateSubCategories] 이전 하위 카테고리 값 복원: '${currentSubValue}'`);
-    }
-  } else {
-    console.log(`[updateSubCategories] 주 카테고리 '${mainCategoryValue}'에 대한 하위 카테고리가 없습니다.`);
   }
-}, 1000); // 1초 캐시
+});
 
 async function openModalOptimized(dateStr) {
   document.getElementById('transactionForm').reset();
@@ -1019,6 +875,38 @@ function displayDailyTransactionsOptimized(transactions, dateStr) {
     });
     list.setAttribute('data-listener-added', 'true');
   }
+}
+
+function populateFormForEdit(transaction) {
+  if (!transaction || typeof transaction.row === 'undefined') {
+    console.error('Invalid transaction data:', transaction);
+    showToast('거래 정보를 불러오지 못했습니다.', true);
+    return;
+  }
+
+  AppState.currentEditingTransaction = transaction;
+  document.getElementById('transactionForm').reset();
+  document.getElementById('modalTitle').textContent = '거래 수정';
+  document.getElementById('transactionDate').value = transaction.date || '';
+  document.getElementById('transactionAmount').value = transaction.amount || '';
+  document.getElementById('transactionContent').value = transaction.content || '';
+
+  document.querySelectorAll('input[name="type"]').forEach(radio => {
+    radio.checked = (radio.value === transaction.type);
+  });
+
+  toggleTypeSpecificFields();
+
+  if (transaction.type === '지출') {
+    document.getElementById('paymentMethod').value = transaction.paymentMethod || '';
+    document.getElementById('mainCategory').value = transaction.category1 || '';
+    updateSubCategories();
+    document.getElementById('subCategory').value = transaction.category2 || '';
+  } else {
+    document.getElementById('incomeSource').value = transaction.category1 || '';
+  }
+
+  document.getElementById('deleteBtn').style.display = 'block';
 }
 
 function toggleTypeSpecificFields() {
