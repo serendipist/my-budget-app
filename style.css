@@ -22,8 +22,8 @@
   /* ④ 폰트 크기 변수 (선생님께서 마지막으로 주신 값을 유지) */
   --font-size-base: 18px;
   --font-size-sm: 0.9rem;
-  --font-size-md: 1.9rem;
-  --font-size-lg: 1.0rem;
+  --font-size-md: 2.1rem;
+  --font-size-lg: 1.5rem;
   --font-size-xl: 1.0rem;
 
   /* ⑤ 모달 전용 폰트 크기 (데스크탑용) */
