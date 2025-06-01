@@ -107,22 +107,80 @@ async function changeMonth(delta){ // 비동기로 변경
 async function updateCalendarDisplay() {
   const loader = document.getElementById('loader');
   const calendarBody = document.getElementById('calendarBody');
-  if (!calendarBody) { console.error("calendarBody not found"); return; }
+  if (!calendarBody) { 
+    console.error("calendarBody 요소를 찾을 수 없습니다.");
+    if(loader) loader.style.display = 'none'; // 로더가 있다면 숨김
+    return; 
+  }
 
-  if(loader) loader.style.display = 'block';
-  calendarBody.innerHTML = '';
+  console.log("[App.js] updateCalendarDisplay for cycle:", currentCycleMonth);
+  if(loader) loader.style.display = 'block'; // 로더 표시
 
-  console.log("[App.js] updateCalendarDisplay: Fetching transactions for cycle:", currentCycleMonth);
+  // 1. localStorage에서 캐시된 데이터가 있다면 먼저 화면에 표시 (빠른 UI 반응)
+  const cachedDataString = localStorage.getItem('transactions_' + currentCycleMonth);
+  let successfullyRenderedFromCache = false;
+  if (cachedDataString) {
+    console.log('[App.js] Rendering calendar from localStorage cache (first pass).');
+    try {
+      const cachedTransactions = JSON.parse(cachedDataString);
+      if (Array.isArray(cachedTransactions)) { // 유효한 배열인지 확인
+        renderCalendarAndSummary(cachedTransactions);
+        successfullyRenderedFromCache = true;
+      } else {
+        console.warn('[App.js] Cached data is not a valid array. Clearing cache for this month.');
+        localStorage.removeItem('transactions_' + currentCycleMonth);
+        calendarBody.innerHTML = ''; // 캐시가 잘못되었으면 달력 비움
+        renderCalendarAndSummary([]);
+      }
+    } catch(e) {
+      console.error("[App.js] Failed to parse transactions from localStorage", e);
+      localStorage.removeItem('transactions_' + currentCycleMonth); // 잘못된 데이터 삭제
+      calendarBody.innerHTML = ''; // 캐시가 잘못되었으면 달력 비움
+      renderCalendarAndSummary([]);
+    }
+  } else {
+    // 캐시된 데이터가 없으면 달력을 비우고 네트워크 응답을 기다립니다.
+    console.log('[App.js] No localStorage cache found for this month. Waiting for network.');
+    calendarBody.innerHTML = ''; 
+    renderCalendarAndSummary([]); // 빈 달력과 요약으로 초기화
+  }
+  
+  // 2. 네트워크를 통해 최신 데이터를 가져와서 UI와 localStorage를 업데이트합니다.
   try {
-    const transactions = await callAppsScriptApi('getTransactions', { cycleMonth: currentCycleMonth });
-    localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(transactions || [])); // API 결과 캐싱
-    renderCalendarAndSummary(transactions || []);
+    console.log("[App.js] Fetching latest transactions from API for cycle:", currentCycleMonth);
+    const latestTransactions = await callAppsScriptApi('getTransactions', { cycleMonth: currentCycleMonth });
+    
+    // API 응답이 유효한 배열인지 확인 (오류 객체가 올 수도 있음)
+    const transactionsToDisplay = (latestTransactions && Array.isArray(latestTransactions)) ? latestTransactions : [];
+
+    localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(transactionsToDisplay));
+    console.log('[App.js] Updated localStorage with fresh data from API.');
+    
+    renderCalendarAndSummary(transactionsToDisplay); // 최신 데이터로 화면 다시 그리기
+    
+    if (successfullyRenderedFromCache && JSON.stringify(transactionsToDisplay) !== cachedDataString) {
+      // 캐시로 먼저 그렸고, 네트워크 데이터가 다를 경우에만 알림 (선택적)
+      showToast('달력 데이터가 업데이트 되었습니다.', false); 
+    } else if (!successfullyRenderedFromCache) {
+      // 캐시가 없어서 네트워크에서 처음 그린 경우
+      // showToast('달력 데이터를 불러왔습니다.', false); // 필요시 알림
+    }
+
   } catch (error) {
-    console.error('updateCalendarDisplay API call failed:', error);
-    // showToast는 callAppsScriptApi에서 이미 호출됨
-    renderCalendarAndSummary([]); // 오류 시 빈 달력
+    console.error('[App.js] updateCalendarDisplay API call failed:', error);
+    if (!successfullyRenderedFromCache) { 
+      // 캐시된 데이터도 없었고 API 호출도 실패한 경우에만 오류 토스트 표시
+      // (showToast는 callAppsScriptApi 내부에서도 호출될 수 있으므로 중복 방지 고려)
+       if (typeof showToast === 'function' && !error.message.includes("API 요청 중 오류")) { // callAppsScriptApi에서 이미 토스트 띄웠으면 중복 방지
+         showToast('거래 내역을 불러오는데 실패했습니다.', true);
+       }
+    } else {
+      // 캐시로 이미 화면을 보여줬고, 백그라운드 업데이트만 실패한 경우
+      showToast('최신 데이터 업데이트 실패. 현재 캐시된 정보가 표시됩니다.', true);
+    }
+    // API 실패 시, UI는 이미 로컬스토리지 데이터로 그려졌거나 비워진 상태를 유지합니다.
   } finally {
-    if(loader) loader.style.display = 'none';
+    if(loader) loader.style.display = 'none'; // 로더 숨김
   }
 }
 
