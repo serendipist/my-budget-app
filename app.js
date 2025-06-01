@@ -1,4 +1,4 @@
-// app.js - 모든 검토사항 반영된 최종 버전
+// app.js - 오류 수정된 최종 버전
 const EXPENSE_CATEGORIES_CACHE_KEY = 'expenseCategoriesCache_v2';
 const PAYMENT_METHODS_CACHE_KEY = 'paymentMethodsCache_v2';
 const INCOME_SOURCES_CACHE_KEY = 'incomeSourcesCache_v2';
@@ -26,6 +26,14 @@ const AppState = {
 
 /* === 유틸리티 함수들 === */
 const Utils = {
+  // 배열 검증 헬퍼
+  ensureArray(data) {
+    if (Array.isArray(data)) return data;
+    if (data === null || data === undefined) return [];
+    console.warn('[Utils.ensureArray] 배열이 아닌 데이터를 배열로 변환:', typeof data, data);
+    return [];
+  },
+
   // 개선된 메모이제이션 헬퍼
   memoize(fn, ttl = 60000) {
     const cache = new Map();
@@ -170,7 +178,6 @@ async function callAppsScriptApi(actionName, params = {}, retryCount = 0, usePos
       return result.data !== undefined ? result.data : result;
 
     } catch (error) {
-      // ⚠️ 수정: 올바른 조건문으로 변경
       if (retryCount < API_RETRY_COUNT && error.name !== 'AbortError') {
         console.log(`[API] Retrying ${actionName} in ${API_RETRY_DELAY}ms...`);
         await new Promise(resolve => setTimeout(resolve, API_RETRY_DELAY));
@@ -191,7 +198,7 @@ async function callAppsScriptApi(actionName, params = {}, retryCount = 0, usePos
   return requestPromise;
 }
 
-// ⚠️ 개선된 배치 API 호출 (에러 처리 강화)
+// 배치 API 호출
 async function callBatchApi(requests) {
   try {
     const batchData = await callAppsScriptApi('getBatchData', {
@@ -263,7 +270,7 @@ async function syncPendingChanges() {
   }
 }
 
-/* === ⚠️ 개선된 앱 초기화 (중복 호출 해결) === */
+/* === 개선된 앱 초기화 === */
 window.onload = async () => {
   console.log("[App] Initializing application...");
   
@@ -272,7 +279,7 @@ window.onload = async () => {
     setupEventListeners();
     showLoadingState(true);
 
-    // ⚠️ 수정: 한 번의 초기 데이터 로드로 통합
+    // 통합된 초기 데이터 로드
     await loadInitialDataOptimizedIntegrated();
     
     showView('calendarView');
@@ -294,7 +301,7 @@ window.onload = async () => {
   }
 };
 
-/* === ⚠️ 통합된 초기 데이터 로딩 (중복 제거) === */
+/* === 통합된 초기 데이터 로딩 === */
 async function loadInitialDataOptimizedIntegrated() {
   console.log("[App] Loading initial data with integrated approach...");
   
@@ -308,12 +315,16 @@ async function loadInitialDataOptimizedIntegrated() {
     renderSetupUI();
   }
   
-  if (cachedTransactions) {
+  // ⚠️ 수정: 배열 검증 추가
+  const validTransactions = Utils.ensureArray(cachedTransactions);
+  if (validTransactions.length > 0) {
     console.log('[App] Applying cached transactions');
-    AppState.currentTransactions = cachedTransactions;
-    renderCalendarAndSummaryOptimized(cachedTransactions);
+    AppState.currentTransactions = validTransactions;
+    renderCalendarAndSummaryOptimized(validTransactions);
   } else {
-    renderCalendarAndSummaryOptimized([]); // 빈 달력 표시
+    console.log('[App] No valid cached transactions, showing empty calendar');
+    AppState.currentTransactions = [];
+    renderCalendarAndSummaryOptimized([]);
   }
 
   // 2. 백그라운드에서 모든 데이터를 한 번에 로드
@@ -343,18 +354,22 @@ async function loadInitialDataOptimizedIntegrated() {
       }
     }
 
-    // 거래내역 처리
-    if (freshData.transactions && Array.isArray(freshData.transactions)) {
-      hasTransactionChanges = !cachedTransactions || 
-        JSON.stringify(freshData.transactions) !== JSON.stringify(cachedTransactions);
+    // ⚠️ 수정: 거래내역 처리 시 배열 검증 강화
+    if (freshData.transactions) {
+      const freshTransactions = Utils.ensureArray(freshData.transactions);
+      const cachedTransactionsArray = Utils.ensureArray(cachedTransactions);
+      
+      hasTransactionChanges = cachedTransactionsArray.length === 0 || 
+        JSON.stringify(freshTransactions) !== JSON.stringify(cachedTransactionsArray);
       
       if (hasTransactionChanges) {
-        AppState.currentTransactions = freshData.transactions;
-        Utils.setCachedData('transactions_' + AppState.currentCycleMonth, freshData.transactions);
-        Utils.setMemoryCache('transactions_' + AppState.currentCycleMonth, freshData.transactions);
-        renderCalendarAndSummaryOptimized(freshData.transactions);
+        console.log('[App] Updating transactions with fresh data');
+        AppState.currentTransactions = freshTransactions;
+        Utils.setCachedData('transactions_' + AppState.currentCycleMonth, freshTransactions);
+        Utils.setMemoryCache('transactions_' + AppState.currentCycleMonth, freshTransactions);
+        renderCalendarAndSummaryOptimized(freshTransactions);
         
-        if (cachedTransactions) {
+        if (cachedTransactionsArray.length > 0) {
           showToast('달력이 최신 데이터로 업데이트되었습니다.', false);
         }
       }
@@ -367,7 +382,7 @@ async function loadInitialDataOptimizedIntegrated() {
 
   } catch (error) {
     console.error('Integrated data load failed:', error);
-    if (!cachedData.hasAllData && !cachedTransactions) {
+    if (!cachedData.hasAllData && validTransactions.length === 0) {
       showToast('초기 데이터 로드에 실패했습니다.', true);
     }
   }
@@ -439,7 +454,7 @@ async function preloadAdjacentMonthsData() {
   }
 }
 
-/* === ⚠️ 개선된 달력 업데이트 (중복 로드 방지) === */
+/* === 개선된 달력 업데이트 === */
 async function updateCalendarDisplayOptimized() {
   const calendarBody = document.getElementById('calendarBody');
   
@@ -454,21 +469,25 @@ async function updateCalendarDisplayOptimized() {
   // 1. 메모리 캐시 확인
   const memoryCached = Utils.getMemoryCache('transactions_' + AppState.currentCycleMonth);
   if (memoryCached) {
+    const validMemoryTransactions = Utils.ensureArray(memoryCached);
     console.log('[App] Rendering from memory cache');
-    AppState.currentTransactions = memoryCached;
-    renderCalendarAndSummaryOptimized(memoryCached);
+    AppState.currentTransactions = validMemoryTransactions;
+    renderCalendarAndSummaryOptimized(validMemoryTransactions);
     showLoadingState(false, 'calendar');
     return;
   }
 
   // 2. localStorage 캐시 확인
   const cachedTransactions = Utils.getCachedData('transactions_' + AppState.currentCycleMonth);
-  if (cachedTransactions && Array.isArray(cachedTransactions)) {
+  const validCachedTransactions = Utils.ensureArray(cachedTransactions);
+  
+  if (validCachedTransactions.length > 0) {
     console.log('[App] Rendering from localStorage cache');
-    AppState.currentTransactions = cachedTransactions;
-    renderCalendarAndSummaryOptimized(cachedTransactions);
-    Utils.setMemoryCache('transactions_' + AppState.currentCycleMonth, cachedTransactions);
+    AppState.currentTransactions = validCachedTransactions;
+    renderCalendarAndSummaryOptimized(validCachedTransactions);
+    Utils.setMemoryCache('transactions_' + AppState.currentCycleMonth, validCachedTransactions);
   } else {
+    console.log('[App] No cached transactions, showing empty calendar');
     AppState.currentTransactions = [];
     renderCalendarAndSummaryOptimized([]);
   }
@@ -480,24 +499,25 @@ async function updateCalendarDisplayOptimized() {
         cycleMonth: AppState.currentCycleMonth 
       });
 
-      if (Array.isArray(latestTransactions)) {
-        const hasChanges = !cachedTransactions || 
-          JSON.stringify(latestTransactions) !== JSON.stringify(cachedTransactions);
+      const validLatestTransactions = Utils.ensureArray(latestTransactions);
+      
+      const hasChanges = validCachedTransactions.length === 0 || 
+        JSON.stringify(validLatestTransactions) !== JSON.stringify(validCachedTransactions);
 
-        if (hasChanges) {
-          AppState.currentTransactions = latestTransactions;
-          Utils.setCachedData('transactions_' + AppState.currentCycleMonth, latestTransactions);
-          Utils.setMemoryCache('transactions_' + AppState.currentCycleMonth, latestTransactions);
-          renderCalendarAndSummaryOptimized(latestTransactions);
-          
-          if (cachedTransactions) {
-            showToast('달력이 최신 데이터로 업데이트되었습니다.', false);
-          }
+      if (hasChanges) {
+        console.log('[App] Updating with latest transactions from server');
+        AppState.currentTransactions = validLatestTransactions;
+        Utils.setCachedData('transactions_' + AppState.currentCycleMonth, validLatestTransactions);
+        Utils.setMemoryCache('transactions_' + AppState.currentCycleMonth, validLatestTransactions);
+        renderCalendarAndSummaryOptimized(validLatestTransactions);
+        
+        if (validCachedTransactions.length > 0) {
+          showToast('달력이 최신 데이터로 업데이트되었습니다.', false);
         }
       }
     } catch (error) {
       console.error('Calendar data refresh failed:', error);
-      if (!cachedTransactions) {
+      if (validCachedTransactions.length === 0) {
         showToast('거래 내역을 불러오는데 실패했습니다.', true);
       }
     }
@@ -506,23 +526,36 @@ async function updateCalendarDisplayOptimized() {
   showLoadingState(false, 'calendar');
 }
 
+// ⚠️ 수정: 배열 검증이 포함된 달력 렌더링
 function renderCalendarAndSummaryOptimized(transactions) {
+  const validTransactions = Utils.ensureArray(transactions);
+  console.log(`[renderCalendarAndSummaryOptimized] Processing ${validTransactions.length} transactions`);
+  
   const year = parseInt(AppState.currentCycleMonth.split('-')[0], 10);
   const month = parseInt(AppState.currentCycleMonth.split('-')[1], 10);
   
   document.getElementById('currentMonthYear').textContent = 
     `${year}년 ${String(month).padStart(2,'0')}월 주기`;
     
-  renderCalendarOptimized(year, month, transactions);
-  updateSummaryOptimized(transactions);
+  renderCalendarOptimized(year, month, validTransactions);
+  updateSummaryOptimized(validTransactions);
 }
 
+// ⚠️ 수정: 배열 검증 강화된 달력 렌더링 함수
 const renderCalendarOptimized = Utils.memoize(function(year, monthOneBased, transactions) {
+  const validTransactions = Utils.ensureArray(transactions);
+  console.log(`[renderCalendarOptimized] Rendering calendar with ${validTransactions.length} transactions`);
+  
   const calendarBody = document.getElementById('calendarBody');
+  if (!calendarBody) {
+    console.error('[renderCalendarOptimized] calendarBody element not found');
+    return;
+  }
+  
   const fragment = document.createDocumentFragment();
   
   const transMap = new Map();
-  transactions.forEach(t => {
+  validTransactions.forEach(t => {
     if (t && t.date) {
       if (!transMap.has(t.date)) {
         transMap.set(t.date, []);
@@ -557,7 +590,7 @@ const renderCalendarOptimized = Utils.memoize(function(year, monthOneBased, tran
     
     const dayTransactions = transMap.get(dStr) || [];
     dayTransactions.forEach(t => {
-      if (typeof t.amount !== 'undefined') {
+      if (t && typeof t.amount !== 'undefined') {
         const div = document.createElement('div');
         div.className = `transaction-item ${t.type === '수입' ? 'income' : 'expense'}`;
         div.textContent = `${Number(t.amount).toLocaleString()}원`;
@@ -587,10 +620,14 @@ const renderCalendarOptimized = Utils.memoize(function(year, monthOneBased, tran
   calendarBody.appendChild(fragment);
 }, 5000);
 
+// ⚠️ 수정: 배열 검증이 포함된 요약 업데이트
 const updateSummaryOptimized = Utils.memoize(function(transactions) {
+  const validTransactions = Utils.ensureArray(transactions);
+  console.log(`[updateSummaryOptimized] Processing ${validTransactions.length} transactions for summary`);
+  
   let inc = 0, exp = 0;
   
-  transactions.forEach(t => {
+  validTransactions.forEach(t => {
     if (t && typeof t.amount !== 'undefined') {
       const amount = Number(t.amount) || 0;
       if (t.type === '수입') {
@@ -604,39 +641,54 @@ const updateSummaryOptimized = Utils.memoize(function(transactions) {
   const balance = inc - exp;
   
   requestAnimationFrame(() => {
-    document.getElementById('totalIncome').textContent = `₩${inc.toLocaleString()}`;
-    document.getElementById('totalExpense').textContent = `₩${exp.toLocaleString()}`;
+    const incomeEl = document.getElementById('totalIncome');
+    const expenseEl = document.getElementById('totalExpense');
+    const balanceEl = document.getElementById('totalBalance');
     
-    const balEl = document.getElementById('totalBalance');
-    balEl.textContent = `₩${balance.toLocaleString()}`;
-    balEl.className = 'total-balance';
-    if (balance < 0) balEl.classList.add('negative');
+    if (incomeEl) incomeEl.textContent = `₩${inc.toLocaleString()}`;
+    if (expenseEl) expenseEl.textContent = `₩${exp.toLocaleString()}`;
+    
+    if (balanceEl) {
+      balanceEl.textContent = `₩${balance.toLocaleString()}`;
+      balanceEl.className = 'total-balance';
+      if (balance < 0) balanceEl.classList.add('negative');
+    }
   });
 }, 1000);
 
 /* === 향상된 이벤트 처리 === */
 function setupEventListeners() {
-  document.getElementById('transactionForm').addEventListener('submit', handleTransactionSubmitOptimized);
+  const form = document.getElementById('transactionForm');
+  const calendarBody = document.getElementById('calendarBody');
+  const mainCategory = document.getElementById('mainCategory');
   
-  document.getElementById('calendarBody').addEventListener('click', function(e) {
-    const dateCell = e.target.closest('.calendar-date');
-    if (dateCell && dateCell.dataset.date) {
-      openModalOptimized(dateCell.dataset.date);
-    }
-  });
+  if (form) {
+    form.addEventListener('submit', handleTransactionSubmitOptimized);
+  }
+  
+  if (calendarBody) {
+    calendarBody.addEventListener('click', function(e) {
+      const dateCell = e.target.closest('.calendar-date');
+      if (dateCell && dateCell.dataset.date) {
+        openModalOptimized(dateCell.dataset.date);
+      }
+    });
+  }
 
-  document.getElementById('mainCategory').addEventListener('change', 
-    Utils.debounce(() => {
-      updateSubCategories();
-    }, 100)
-  );
+  if (mainCategory) {
+    mainCategory.addEventListener('change', 
+      Utils.debounce(() => {
+        updateSubCategories();
+      }, 100)
+    );
+  }
 
   document.querySelectorAll('input[name="type"]').forEach(radio => {
     radio.addEventListener('change', toggleTypeSpecificFields);
   });
 }
 
-/* === ⚠️ POST 방식으로 개선된 거래 처리 === */
+/* === POST 방식으로 개선된 거래 처리 === */
 async function handleTransactionSubmitOptimized(e) {
   e.preventDefault();
   
@@ -663,7 +715,6 @@ async function handleTransactionSubmitOptimized(e) {
       } :
       { transactionData: JSON.stringify(transactionData) };
 
-    // ⚠️ 수정: POST 방식 사용 (URL 길이 제한 해결)
     const result = await callAppsScriptApi(action, params, 0, true);
 
     if (result.success) {
@@ -702,7 +753,7 @@ function validateTransactionData(data) {
 }
 
 function performOptimisticUpdate(transactionData, isEditing) {
-  const originalData = [...AppState.currentTransactions];
+  const originalData = Utils.ensureArray(AppState.currentTransactions);
   const optimisticData = [...originalData];
 
   if (isEditing) {
@@ -738,11 +789,12 @@ function applyTransactionCategories(item, data) {
 }
 
 function rollbackOptimisticUpdate(originalData) {
-  AppState.currentTransactions = originalData;
+  const validOriginalData = Utils.ensureArray(originalData);
+  AppState.currentTransactions = validOriginalData;
   const cacheKey = 'transactions_' + AppState.currentCycleMonth;
-  Utils.setCachedData(cacheKey, originalData);
-  Utils.setMemoryCache(cacheKey, originalData);
-  renderCalendarAndSummaryOptimized(originalData);
+  Utils.setCachedData(cacheKey, validOriginalData);
+  Utils.setMemoryCache(cacheKey, validOriginalData);
+  renderCalendarAndSummaryOptimized(validOriginalData);
 }
 
 function invalidateTransactionCache() {
@@ -751,7 +803,7 @@ function invalidateTransactionCache() {
   AppState.memoryCache.delete(cacheKey);
 }
 
-/* === ⚠️ 개선된 카테고리 검증 및 처리 === */
+/* === 개선된 카테고리 검증 및 처리 === */
 function validateCategoryData() {
   if (!AppState.initialDataLoaded) {
     console.warn('[validateCategoryData] 초기 데이터가 아직 로드되지 않았습니다.');
@@ -766,7 +818,7 @@ function validateCategoryData() {
   return true;
 }
 
-/* === ⚠️ 완전 개선된 populateFormForEdit === */
+/* === 완전 개선된 populateFormForEdit === */
 function populateFormForEdit(transaction) {
   if (!transaction || typeof transaction.row === 'undefined') {
     console.error('[populateFormForEdit] 유효하지 않은 거래 데이터입니다:', transaction);
@@ -776,7 +828,6 @@ function populateFormForEdit(transaction) {
 
   console.log('[populateFormForEdit] 수정할 거래 데이터:', JSON.parse(JSON.stringify(transaction)));
   
-  // ⚠️ 수정: 초기 데이터 로드 대기
   if (transaction.type === '지출' && !validateCategoryData()) {
     console.warn('[populateFormForEdit] 카테고리 데이터가 준비되지 않아 수정을 연기합니다.');
     setTimeout(() => populateFormForEdit(transaction), 500);
@@ -822,7 +873,6 @@ function populateFormForEdit(transaction) {
       }
     }
 
-    // ⚠️ 개선: 더 확실한 하위 카테고리 처리
     updateSubCategoriesForEdit(transaction.category1, transaction.category2);
 
   } else if (transaction.type === '수입') {
@@ -837,15 +887,11 @@ function populateFormForEdit(transaction) {
   document.getElementById('deleteBtn').style.display = 'block';
 }
 
-// ⚠️ 새로운 함수: 폼 수정용 하위 카테고리 처리
+// 폼 수정용 하위 카테고리 처리
 function updateSubCategoriesForEdit(mainCategoryValue, subCategoryValue) {
-  // 기존 메모이제이션 캐시 클리어
   updateSubCategories.clearCache();
-  
-  // 주 카테고리 기반으로 하위 카테고리 업데이트
   updateSubCategories();
   
-  // 다음 프레임에서 하위 카테고리 값 설정
   requestAnimationFrame(() => {
     const subCategorySelect = document.getElementById('subCategory');
     if (subCategorySelect && subCategoryValue) {
@@ -880,12 +926,13 @@ function showLoadingState(show, type = 'global') {
 function debugFormState() {
   console.log('=== 폼 상태 디버깅 ===');
   console.log('현재 수정 중인 거래:', AppState.currentEditingTransaction);
-  console.log('주 카테고리 값:', document.getElementById('mainCategory').value);
-  console.log('하위 카테고리 값:', document.getElementById('subCategory').value);
+  console.log('주 카테고리 값:', document.getElementById('mainCategory')?.value);
+  console.log('하위 카테고리 값:', document.getElementById('subCategory')?.value);
   console.log('사용 가능한 주 카테고리:', Object.keys(AppState.expenseCategoriesData));
   console.log('초기 데이터 로드 완료:', AppState.initialDataLoaded);
+  console.log('현재 거래 내역 수:', AppState.currentTransactions.length);
   
-  const mainCat = document.getElementById('mainCategory').value;
+  const mainCat = document.getElementById('mainCategory')?.value;
   if (mainCat && AppState.expenseCategoriesData[mainCat]) {
     console.log(`'${mainCat}'의 하위 카테고리:`, AppState.expenseCategoriesData[mainCat]);
   }
@@ -958,7 +1005,6 @@ function populateFormDropdowns() {
   }
 }
 
-// ⚠️ 개선된 updateSubCategories (메모이제이션 키 포함)
 const updateSubCategories = Utils.memoize(function(mainCategoryValue = null) {
   const mainCategorySelect = document.getElementById('mainCategory');
   const subCategorySelect = document.getElementById('subCategory');
@@ -993,7 +1039,6 @@ const updateSubCategories = Utils.memoize(function(mainCategoryValue = null) {
 }, 1000);
 
 async function openModalOptimized(dateStr) {
-  // 초기 데이터 로드 대기
   if (!AppState.initialDataLoaded) {
     showToast('데이터 로딩 중입니다. 잠시 후 다시 시도해주세요.', true);
     return;
@@ -1024,7 +1069,8 @@ async function loadDailyTransactionsOptimized(dateStr) {
 
   try {
     const dailyData = await callAppsScriptApi('getTransactionsByDate', { date: dateStr });
-    displayDailyTransactionsOptimized(dailyData || [], dateStr);
+    const validDailyData = Utils.ensureArray(dailyData);
+    displayDailyTransactionsOptimized(validDailyData, dateStr);
   } catch (error) {
     console.error('Daily transactions load failed:', error);
     list.textContent = '일일 거래 내역 로딩 실패.';
@@ -1035,14 +1081,16 @@ function displayDailyTransactionsOptimized(transactions, dateStr) {
   const list = document.getElementById('dailyTransactionList');
   if (!list) return;
 
-  if (!Array.isArray(transactions) || transactions.length === 0) {
+  const validTransactions = Utils.ensureArray(transactions);
+  
+  if (validTransactions.length === 0) {
     list.textContent = '해당 날짜의 거래 내역이 없습니다.';
     return;
   }
 
   const fragment = document.createDocumentFragment();
   
-  transactions.forEach(transaction => {
+  validTransactions.forEach(transaction => {
     if (!transaction || typeof transaction.type === 'undefined') return;
 
     const div = document.createElement('div');
@@ -1127,7 +1175,7 @@ function showView(id) {
 
   document.querySelectorAll('.tab-button').forEach(button => 
     button.classList.remove('active'));
-  document.querySelector(`.tab-button[onclick="showView('${id}')"]`).classList.add('active');
+  document.querySelector(`.tab-button[onclick="showView('${id}')"]`)?.classList.add('active');
 
   if (id === 'cardView') {
     AppState.cardPerformanceMonthDate = new Date();
@@ -1137,7 +1185,10 @@ function showView(id) {
 
 function showToast(message, isError = false) {
   const toast = document.getElementById('toast');
-  if (!toast) return;
+  if (!toast) {
+    console.log(`[Toast] ${isError ? 'ERROR' : 'INFO'}: ${message}`);
+    return;
+  }
 
   toast.textContent = message;
   toast.style.backgroundColor = isError ? '#dc3545' : '#28a745';
@@ -1242,7 +1293,7 @@ async function handleDelete() {
 
   const rowId = AppState.currentEditingTransaction.row;
   const isTemp = typeof rowId === 'string' && rowId.startsWith('temp-');
-  const originalData = [...AppState.currentTransactions];
+  const originalData = Utils.ensureArray(AppState.currentTransactions);
 
   const filteredData = originalData.filter(t => 
     t && typeof t.row !== 'undefined' && t.row.toString() !== rowId.toString());
@@ -1264,7 +1315,7 @@ async function handleDelete() {
   try {
     const result = await callAppsScriptApi('deleteTransaction', { 
       id_to_delete: Number(rowId) 
-    }, 0, true); // POST 방식 사용
+    }, 0, true);
 
     if (result.success) {
       showToast(result.message || '삭제 완료!', false);
