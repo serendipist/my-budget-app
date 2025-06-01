@@ -1,9 +1,4 @@
-// app.js
-
 const APPS_SCRIPT_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbzjP671pu6MMLKhmTXHwqCu-wci-Y-RM0Sl5TlQO0HmGsyrH83DBj6dsh62LqHIf-YD/exec";
-// 예: "https://script.google.com/macros/s/AKfycb............/exec"
-// 이 URL은 다음 단계에서 Apps Script 백엔드를 API로 만들 때 사용합니다. 지금은 placeholder입니다.
-
 /* === 전역 상태 === */
 let currentDisplayDate = new Date();
 let currentCycleMonth = '';
