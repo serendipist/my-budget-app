@@ -166,42 +166,78 @@ function renderCalendarAndSummary(transactions){ /* 이전과 동일 */
   updateSummary(transactions);
 }
 
-function renderCalendar(year, monthOneBased, transactions){ /* 이전과 동일 */
+function renderCalendar(year, monthOneBased, transactions){
   const calendarBody = document.getElementById('calendarBody');
-  if (!calendarBody) { console.error("calendarBody for renderCalendar not found"); return; }
   calendarBody.innerHTML = '';
+
+  /* 날짜별 거래 배열 맵 */
   const transMap = {};
-  (transactions||[]).forEach(t=>{ if (t && t.date) { (transMap[t.date] = transMap[t.date] || []).push(t); } });
-  const cycleStart = new Date(year, monthOneBased - 1, 18);
-  const cycleEnd = new Date(year, monthOneBased, 17);
-  let curDate = new Date(cycleStart);
+  (transactions||[]).forEach(t=>{
+     if(t && t.date){ (transMap[t.date]=transMap[t.date]||[]).push(t); }
+  });
+
+  const cycleStart = new Date(year, monthOneBased-1, 18);
+  const cycleEnd   = new Date(year, monthOneBased,   17);
+  let cur = new Date(cycleStart);
   let weekRow = document.createElement('tr');
   const frag = document.createDocumentFragment();
-  const startDayOfWeek = cycleStart.getDay(); 
-  for(let i=0; i<startDayOfWeek; i++){ const td = document.createElement('td'); td.className='other-month'; weekRow.appendChild(td); }
-  while(curDate <= cycleEnd){
+
+  /* 첫 주 공백 */
+  for(let i=0;i<cycleStart.getDay();i++){
+    const td=document.createElement('td'); td.className='other-month'; weekRow.appendChild(td);
+  }
+
+  /* 날짜 루프 */
+  while(cur<=cycleEnd){
     const td = document.createElement('td');
-    const dSpan = document.createElement('span'); dSpan.className='date-number'; dSpan.textContent = curDate.getDate(); td.appendChild(dSpan);
-    const dStr = `${curDate.getFullYear()}-${String(curDate.getMonth()+1).padStart(2,'0')}-${String(curDate.getDate()).padStart(2,'0')}`;
-    td.dataset.date = dStr; td.onclick = () => openModal(dStr);
-    (transMap[dStr]||[]).forEach(t=>{
-      if (t && typeof t.amount !== 'undefined') {
-        const div = document.createElement('div'); div.className = `transaction-item ${t.type==='수입'?'income':'expense'}`;
-        div.textContent = `${Number(t.amount).toLocaleString()}원`; td.appendChild(div);
-      }
+    const dStr = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+    td.dataset.date=dStr; td.onclick=()=>openModal(dStr);
+
+    /* 날짜 숫자 */
+    const num = document.createElement('span');
+    num.className='date-number';
+    num.textContent=cur.getDate();
+    td.appendChild(num);
+
+    /* ─ 새: 거래 미리보기 ─ */
+    const wrap=document.createElement('div');
+    wrap.className='txn-wrap';
+
+    const list = transMap[dStr]||[];
+    list.slice(0,3).forEach(t=>{
+      const div=document.createElement('div');
+      div.className=`txn-item ${t.type==='수입'?'income':'expense'}`;
+      div.textContent=`${Number(t.amount).toLocaleString()}원`;
+      wrap.appendChild(div);
     });
+    if(list.length>3){
+      const more=document.createElement('div');
+      more.className='more-link';
+      more.textContent=`+${list.length-3}`;
+      more.onclick=e=>{ e.stopPropagation(); openModal(dStr);}   // td 클릭 전파 막기
+      wrap.appendChild(more);
+    }
+    td.appendChild(wrap);
+    /* ──────────────── */
+
     weekRow.appendChild(td);
-    if(curDate.getDay() === 6 || curDate.getTime() === cycleEnd.getTime()){
-      if(curDate.getDay() !== 6 && curDate.getTime() === cycleEnd.getTime()){ 
-        for(let i = curDate.getDay() + 1; i <= 6; i++){ const emptyTd = document.createElement('td'); emptyTd.className='other-month'; weekRow.appendChild(emptyTd); }
+
+    if(cur.getDay()===6 || cur.getTime()===cycleEnd.getTime()){
+      /* 마지막 주 빈칸 */
+      if(cur.getTime()===cycleEnd.getTime() && cur.getDay()!==6){
+        for(let i=cur.getDay()+1;i<=6;i++){
+          const empty=document.createElement('td');
+          empty.className='other-month';
+          weekRow.appendChild(empty);
+        }
       }
       frag.appendChild(weekRow);
-      if(curDate.getTime() !== cycleEnd.getTime()){ weekRow = document.createElement('tr'); }
+      if(cur.getTime()!==cycleEnd.getTime()) weekRow=document.createElement('tr');
     }
-    curDate.setDate(curDate.getDate() + 1);
+    cur.setDate(cur.getDate()+1);
   }
   calendarBody.appendChild(frag);
-  if (typeof afterRender === 'function') afterRender();
+  if(typeof afterRender==='function') afterRender();
 }
 
 function updateSummary(transactions){ /* 이전과 동일 */
