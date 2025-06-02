@@ -109,49 +109,71 @@ async function changeMonth(delta){ /* 이전과 동일 */
   await updateCalendarDisplay(); 
 }
 
-async function updateCalendarDisplay() { /* 이전 답변의 "캐시 먼저, 네트워크는 나중에" 전략 적용된 버전 사용 */
-  const loader = document.getElementById('loader');
+async function updateCalendarDisplay () {
+  const loader       = document.getElementById('loader');
   const calendarBody = document.getElementById('calendarBody');
-  if (!calendarBody) { console.error("calendarBody not found"); if(loader) loader.style.display = 'none'; return; }
-  if(loader) loader.style.display = 'block';
-  console.log("[App.js] updateCalendarDisplay: Fetching transactions for cycle:", currentCycleMonth);
-  let transactionsToRender = [];
-  const cachedDataString = localStorage.getItem('transactions_' + currentCycleMonth);
-  let renderedFromCache = false;
+  if (!calendarBody) { console.error('calendarBody not found'); return; }
+  if (loader) loader.style.display = 'block';
+
+  console.log('[App.js] updateCalendarDisplay →', currentCycleMonth);
+
+  /* 1️⃣  캐시 우선 렌더링 ------------------------------------------------- */
+  const cacheKey            = 'transactions_' + currentCycleMonth;
+  const cachedDataString    = localStorage.getItem(cacheKey);
+  let   renderedFromCache   = false;
+  let   transactionsToRender = [];
+
   if (cachedDataString) {
-    console.log('[App.js] Rendering calendar from localStorage cache (first pass for updateCalendarDisplay).');
     try {
-      const cachedTransactions = JSON.parse(cachedDataString);
-      if (Array.isArray(cachedTransactions)) {
-        transactionsToRender = cachedTransactions;
-        renderCalendarAndSummary(transactionsToRender); 
+      const cachedArr = JSON.parse(cachedDataString);
+      if (Array.isArray(cachedArr)) {
+        transactionsToRender = cachedArr;
+        renderCalendarAndSummary(cachedArr);
         renderedFromCache = true;
-      } else { localStorage.removeItem('transactions_' + currentCycleMonth); }
-    } catch (e) { 
-      console.error("Failed to parse transactions from localStorage", e);
-      localStorage.removeItem('transactions_' + currentCycleMonth);
+        console.log('[App.js] drew calendar from localStorage');
+      } else {
+        localStorage.removeItem(cacheKey);
+      }
+    } catch (err) {
+      console.warn('cache parse fail → drop', err);
+      localStorage.removeItem(cacheKey);
     }
   }
-  if (!renderedFromCache) {
-      calendarBody.innerHTML = ''; 
-      renderCalendarAndSummary([]);
+
+  if (!renderedFromCache) {                        // 캐시 미존재 시 빈 달력
+    calendarBody.innerHTML = '';
+    renderCalendarAndSummary([]);
   }
+
+  /* 2️⃣  네트워크 — stale-while-revalidate -------------------------------- */
   try {
-    const latestTransactions = await callAppsScriptApi('getTransactions', { cycleMonth: currentCycleMonth });
-    const finalTransactions = (latestTransactions && Array.isArray(latestTransactions)) ? latestTransactions : [];
-    localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(finalTransactions));
-    console.log('[App.js] Updated localStorage with fresh data from API for transactions.');
-    if (!renderedFromCache || JSON.stringify(transactionsToRender) !== JSON.stringify(finalTransactions)) {
-      renderCalendarAndSummary(finalTransactions);
+    const latest = await callAppsScriptApi('getTransactions',
+                                           { cycleMonth: currentCycleMonth });
+
+    const finalTx = (latest && Array.isArray(latest)) ? latest : [];
+
+    /* ✨ PATCH: API가 빈 배열을 돌려줬지만 이미 캐시를 그렸다면 무시 */
+    if (renderedFromCache && finalTx.length === 0) {
+      console.warn('[App.js] API empty → keep cached view');
+      return;                         // ⚠️ 아래 로직/캐시 덮어쓰기 모두 건너뜀
     }
-    if (renderedFromCache && JSON.stringify(transactionsToRender) !== JSON.stringify(finalTransactions)) {
-      if (typeof showToast === 'function') showToast('달력 정보가 업데이트 되었습니다.', false);
+
+    /* 3️⃣  캐시 갱신 + 필요 시 재렌더 ------------------------------------ */
+    localStorage.setItem(cacheKey, JSON.stringify(finalTx));
+
+    if (!renderedFromCache ||
+        JSON.stringify(transactionsToRender) !== JSON.stringify(finalTx)) {
+      renderCalendarAndSummary(finalTx);
+
+      if (renderedFromCache) {
+        showToast?.('달력 정보가 업데이트 되었습니다.', false);
+      }
     }
-  } catch (error) {
-    console.error('updateCalendarDisplay API call failed:', error);
-    if (!renderedFromCache) { renderCalendarAndSummary([]); }
+  } catch (err) {
+    console.error('[App.js] getTransactions failed', err);
+    if (!renderedFromCache) renderCalendarAndSummary([]);
   } finally {
-    if(loader) loader.style.display = 'none';
+    if (loader) loader.style.display = 'none';
   }
 }
 
