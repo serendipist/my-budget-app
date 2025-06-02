@@ -438,3 +438,26 @@ body {
   font-size: 0.9rem !important;/* 폰트 크기도 확실히 적용 */
 }
 }
+
+/* === 달력 셀 안 거래 미리보기 === */
+.txn-wrap{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  max-height: calc(var(--calendar-date-row-height) - 32px); /* 날짜 숫자 높이 제외 */
+  overflow:hidden;          /* 3개까지만 보이고 나머진 감춤 */
+}
+
+.txn-item{            /* 기존 .transaction-item 에 추가해도 OK */
+  font-size: 0.9rem;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.more-link{
+  font-size: 0.9rem;
+  color:#007bff;
+  cursor:pointer;
+  text-align:right;
+}
