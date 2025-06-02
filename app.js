@@ -204,16 +204,16 @@ function renderCalendar(year, monthOneBased, transactions){
     wrap.className='txn-wrap';
 
     const list = transMap[dStr]||[];
-    list.slice(0,3).forEach(t=>{
+    list.slice(0,4).forEach(t=>{
       const div=document.createElement('div');
       div.className=`txn-item ${t.type==='수입'?'income':'expense'}`;
       div.textContent=`${Number(t.amount).toLocaleString()}원`;
       wrap.appendChild(div);
     });
-    if(list.length>3){
+    if(list.length>4){
       const more=document.createElement('div');
       more.className='more-link';
-      more.textContent=`+${list.length-3}`;
+      more.textContent=`+${list.length-4}`;
       more.onclick=e=>{ e.stopPropagation(); openModal(dStr);}   // td 클릭 전파 막기
       wrap.appendChild(more);
     }
