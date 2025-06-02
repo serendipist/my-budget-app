@@ -1,6 +1,7 @@
 // sw.js
 const CACHE_NAME = 'kakeibo-pwa-gh-v1'; // GitHub Pages용 새 캐시 이름 (변경 시 버전업)
-
+const CACHE_STATIC = 'static-v1';
+const CACHE_API    = 'api-cache-v1';
 // URLS_TO_CACHE: GitHub Pages에 배포될 파일들의 상대 경로입니다.
 // index.html, style.css, app.js, manifest.json 파일이 모두 루트에 있고,
 // 아이콘은 'icons' 폴더 안에 있다고 가정합니다.
@@ -57,52 +58,36 @@ self.addEventListener('activate', event => {
 
 // 네트워크 요청 가로채기 (Fetch 이벤트)
 self.addEventListener('fetch', event => {
-  const request = event.request;
+  const req = event.request;
+  const url = new URL(req.url);
 
-  // API 호출 (google.script.run 또는 Apps Script Web API URL)은 캐시하지 않고 항상 네트워크로 보냅니다.
-  // 실제 Apps Script API URL 패턴에 맞게 이 조건을 수정해야 합니다.
-  // 예를 들어, Apps Script 웹앱 URL이 'script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec' 이라면,
-  if (request.url.startsWith('https://script.google.com/macros/s/')) { // Apps Script API 호출로 간주
-    // console.log('[SW] API call, bypassing cache (network first):', request.url);
+  /* ── A. Apps Script GET 요청 → stale-while-revalidate ───────────── */
+  const isAppsScriptGet =
+    req.method === 'GET' &&
+    url.hostname === 'script.google.com' &&
+    url.pathname.startsWith('/macros/s/');
+
+  if (isAppsScriptGet) {
     event.respondWith(
-      fetch(request).catch(error => {
-        console.warn('[SW] API fetch failed (returning generic error or offline indicator if any):', request.url, error);
-        // API 호출 실패 시 오프라인 대체 응답을 제공할 수 있습니다. (예: '오프라인입니다' JSON 응답)
-        // return new Response(JSON.stringify({ error: 'offline' }), { headers: { 'Content-Type': 'application/json' }});
+      caches.open(CACHE_API).then(async cache => {
+        const cached = await cache.match(req);           // ① 캐시 우선
+        const fetchPromise = fetch(req)                  // ② 백그라운드 갱신
+          .then(resp => { if (resp.ok) cache.put(req, resp.clone()); return resp; })
+          .catch(() => cached || Response.error());      // 오프라인이면 캐시라도
+        return cached || fetchPromise;                   // 캐시 hit? 즉시 반환 : 아니면 네트워크
       })
     );
-    return;
+    return; // 아래 static 분기로 내려가지 않게 종료
   }
 
-  // 그 외 정적 자원 등: "Cache First, then Network" (캐시 우선, 없으면 네트워크 요청 후 캐싱)
+  /* ── B. 그 외 정적 자원 → cache-first ──────────────────────────── */
   event.respondWith(
-    caches.match(request)
-      .then(cachedResponse => {
-        if (cachedResponse) {
-          // console.log('[SW] Serving from cache:', request.url);
-          return cachedResponse; // 캐시에 있으면 캐시된 응답 반환
+    caches.match(req).then(cached => cached ||
+      fetch(req).then(resp => {
+        if (resp.ok && req.method === 'GET') {
+          caches.open(CACHE_STATIC).then(c => c.put(req, resp.clone()));
         }
-
-        // console.log('[SW] Fetching from network:', request.url);
-        return fetch(request).then(
-          networkResponse => {
-            // GET 요청이고, 유효한 응답(200 OK)이며, chrome-extension이 아닌 경우에만 캐싱
-            if (networkResponse && networkResponse.status === 200 && request.method === 'GET' && !request.url.startsWith('chrome-extension://')) {
-              // console.log('[SW] Caching new resource:', request.url);
-              const responseToCache = networkResponse.clone(); // 응답은 한 번만 사용 가능하므로 복제
-              caches.open(CACHE_NAME)
-                .then(cache => {
-                  cache.put(request, responseToCache);
-                });
-            }
-            return networkResponse; // 네트워크 응답 반환
-          }
-        ).catch(error => {
-          console.warn('[SW] Network fetch failed, no cache hit:', request.url, error);
-          // 여기서 오프라인 대체 페이지나 이미지를 반환할 수 있습니다.
-          // 예: if (request.destination === 'image') return caches.match('/icons/offline-icon.png');
-          // 예: return caches.match('/offline.html');
-        });
-      })
+        return resp;
+      }))
   );
 });
