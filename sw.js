@@ -45,61 +45,48 @@ self.addEventListener('activate', e => {
 });
 
 /* =============== fetch 가로채기 =============== */
-self.addEventListener('fetch', e => {
-  const req = e.request;
-  const url = new URL(req.url);
+self.addEventListener('fetch', event => {        // ★ 매개변수 이름을 event 로 통일
+  const req  = event.request;                    // ★
+  const url  = new URL(req.url);
 
-  /* ---------- A. Apps Script GET 요청 (macros/s/…) ---------- */
+  /* ------------ A. Apps Script GET 요청 (macros/s/...) ------------ */
   const isAppsScriptGet =
         req.method === 'GET' &&
         url.hostname === 'script.google.com' &&
         url.pathname.startsWith('/macros/s/');
 
-if (isAppsScriptGet) {
-  event.respondWith(
-    caches.open(CACHE_API).then(async cache => {
-      /* ① 캐시 우선 반환 */
-      const cached = await cache.match(req);
+  if (isAppsScriptGet) {
+    event.respondWith(                           // ★ event.respondWith 로 수정
+      caches.open(CACHE_API).then(async cache => {
 
-      /* ② 백그라운드로 네트워크 갱신 */
-      const fetchPromise = fetch(req).then(async resp => {
-        if (resp.ok) {
-          /* 클론 2개(파싱용 · 캐시용) */
-          const cloneForParse  = resp.clone();
-          const cloneForCache  = resp.clone();
+        /* ① 캐시 우선 반환 */
+        const cached = await cache.match(req);
 
-          try {
-            /* (B) 응답 JSON 파싱 후 빈 배열이면 캐시 건너뛰기 */
-            const json = await cloneForParse.json();
-            const shouldSkip = Array.isArray(json) && json.length === 0;
+        /* ② 백그라운드로 네트워크 갱신 */
+        const fetchPromise = fetch(req).then(async resp => {
+          if (resp.ok) {
+            /* 클론 2개(파싱용 · 캐시용) */
+            const cloneForParse = resp.clone();
+            const cloneForCache = resp.clone();
 
-            if (!shouldSkip) {
+            try {
+              /* (B) 응답 JSON 파싱 후 빈 배열이면 캐시 생략 */
+              const json       = await cloneForParse.json();
+              const shouldSkip = Array.isArray(json) && json.length === 0;
+
+              if (!shouldSkip) {
+                await cache.put(req, cloneForCache);
+              }
+            } catch (err) {
+              /* JSON 파싱 실패 → 일반 응답으로 간주, 캐시 저장 */
               await cache.put(req, cloneForCache);
-            } else {
-              console.log('[SW] Empty array – skip cache save');
             }
-          } catch (err) {
-            /* JSON 아님 → 그냥 캐시 */
-            await cache.put(req, cloneForCache);
           }
-        }
-        return resp;           // 네트워크 응답 → 페이지
-      }).catch(() => cached || Response.error()); // 오프라인 시 캐시 fallback
+          return resp;
+        });
 
-      /* 캐시 hit 있으면 즉시, 없으면 네트워크 응답을 반환 */
-      return cached || fetchPromise;
-    })
-  );
-  return;                      // 정적 자원 분기로 내려가지 않음
-}
-
-  /* ---------- B. 그 외 정적 파일 : cache-first ---------- */
-  e.respondWith(
-    caches.match(req).then(hit => hit || fetch(req).then(resp => {
-      if (resp.ok && req.method === 'GET') {
-        caches.open(CACHE_STATIC).then(c => c.put(req, resp.clone()));
-      }
-      return resp;
-    }))
-  );
+        return cached || fetchPromise;
+      })
+    );
+  }
 });
