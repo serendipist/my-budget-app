@@ -45,7 +45,7 @@ self.addEventListener('activate', e => {
 });
 
 /* =============== fetch 가로채기 =============== */
-self.addEventListener('fetch', e => {More actions
+self.addEventListener('fetch', e => {
   const req = e.request;
   const url = new URL(req.url);
 
@@ -55,55 +55,43 @@ self.addEventListener('fetch', e => {More actions
         url.hostname === 'script.google.com' &&
         url.pathname.startsWith('/macros/s/');
 
+  /* Apps Script 호출만 캐싱 로직 적용 */
   if (isAppsScriptGet) {
     e.respondWith(
       caches.open(CACHE_API).then(async cache => {
-        /* ① 캐시 선반환 */
-        const cached = await cache.match(req);
-        /* ② 백그라운드로 최신 데이터 가져와 캐시 교체 */
-        const refresh = fetch(req, { cache: 'no-store' })
-          .then(resp => { if (resp.ok) cache.put(req, resp.clone()); return resp; })
-          .catch(() => cached || Response.error());
-if (isAppsScriptGet) {
-  event.respondWith(
-    caches.open(CACHE_API).then(async cache => {
-      /* ① 캐시 우선 반환 */
-      const cached = await cache.match(req);
 
-        /* 캐시가 있으면 즉시 화면에, 없으면 네트워크 응답 */
-        return cached || refresh;
+        /* ① 캐시 우선 반환 */
+        const cached = await cache.match(req);
+
+        /* ② 백그라운드로 네트워크 갱신 */
+        const fetchPromise = fetch(req, { cache: 'no-store' })
+          .then(async resp => {
+            if (resp.ok) {
+              const cloneForParse = resp.clone();
+              const cloneForCache = resp.clone();
+
+              try {
+                // 빈 배열이면 캐시 저장 스킵
+                const json = await cloneForParse.json();
+                if (!Array.isArray(json) || json.length !== 0) {
+                  await cache.put(req, cloneForCache);
+                }
+              } catch (_) {
+                // JSON 파싱 실패 → 그냥 캐시
+                await cache.put(req, cloneForCache);
+              }
+            }
+            return resp;
+          })
+          .catch(() => cached || Response.error());
+
+        /* 캐시 hit 있으면 즉시 반환, 없으면 네트워크 응답 */
+        return cached || fetchPromise;
       })
     );
-    return;   // 밑의 정적 자원 분기 막기
+    return; /* 다른 정적 자원 분기로 내려가지 않음 */
   }
-      /* ② 백그라운드로 네트워크 갱신 */
-      const fetchPromise = fetch(req).then(async resp => {
-        if (resp.ok) {
-          /* 클론 2개(파싱용 · 캐시용) */
-          const cloneForParse  = resp.clone();
-          const cloneForCache  = resp.clone();
 
-          try {
-            /* (B) 응답 JSON 파싱 후 빈 배열이면 캐시 건너뛰기 */
-            const json = await cloneForParse.json();
-            const shouldSkip = Array.isArray(json) && json.length === 0;
-
-            if (!shouldSkip) {
-              await cache.put(req, cloneForCache);
-            } else {
-              console.log('[SW] Empty array – skip cache save');
-            }
-          } catch (err) {
-            /* JSON 아님 → 그냥 캐시 */
-            await cache.put(req, cloneForCache);
-          }
-        }
-        return resp;           // 네트워크 응답 → 페이지
-      }).catch(() => cached || Response.error()); // 오프라인 시 캐시 fallback
-
-      /* 캐시 hit 있으면 즉시, 없으면 네트워크 응답을 반환 */
-      return cached || fetchPromise;
-    })
-  );
-  return;                      // 정적 자원 분기로 내려가지 않음
-}
+  /* ---------- B. 그 외 정적 자원 ---------- */
+  // e.g. fallback 등을 여기서 처리 (필요하다면)
+});
