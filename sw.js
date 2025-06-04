@@ -92,6 +92,35 @@ self.addEventListener('fetch', e => {
     return; /* 다른 정적 자원 분기로 내려가지 않음 */
   }
 
-  /* ---------- B. 그 외 정적 자원 ---------- */
-  // e.g. fallback 등을 여기서 처리 (필요하다면)
+  /* ---------- B. 그 외 정적 자원 (예: Cache First 전략) ---------- */
+  e.respondWith(
+    caches.match(req).then(cachedResponse => {
+      // 1. 캐시에 응답이 있으면 즉시 반환
+      if (cachedResponse) {
+        // console.log('[SW] Serving from static cache:', req.url);
+        return cachedResponse;
+      }
+
+      // 2. 캐시에 없으면 네트워크로 요청
+      return fetch(req).then(networkResponse => {
+        // 2a. (선택 사항) 네트워크에서 성공적으로 가져온 응답을 다음 사용을 위해 캐시에 저장
+        //      어떤 종류의 응답을, 어떤 캐시에 저장할지는 앱의 필요에 따라 결정합니다.
+        //      예를 들어, 성공적인 GET 요청만 특정 정적 캐시에 저장할 수 있습니다.
+        if (networkResponse && networkResponse.ok && req.method === 'GET') {
+          // const CACHE_STATIC_NAME = 'static-assets-v1'; // 정적 자원용 캐시 이름
+          // caches.open(CACHE_STATIC_NAME).then(cache => {
+          //   cache.put(req, networkResponse.clone()); // 응답을 복제해서 캐시에 저장
+          // });
+        }
+        return networkResponse; // 네트워크에서 받은 응답 반환
+      }).catch(error => {
+        // 3. 네트워크 요청도 실패한 경우 (예: 완전 오프라인)
+        console.error('[SW] Fetch failed for static asset; returning fallback or error:', req.url, error);
+        // 여기에 fallback 로직을 추가할 수 있습니다.
+        // 예: if (req.destination === 'document') { return caches.match('/offline.html'); }
+        // 지금은 간단히 아무것도 반환하지 않거나, Response.error()를 반환하여 브라우저 기본 오류를 따르게 할 수 있습니다.
+        // return Response.error(); // 또는 특정 fallback 페이지
+      });
+    })
+  );
 });
