@@ -69,7 +69,7 @@ window.onload = async () => {
   if(loader) loader.style.display = 'block';
 
   try {
-    await loadInitialData();     
+    await ();     
     await updateCalendarDisplay(); 
   } catch (error) {
     console.error("[App.js] Error during initial data loading:", error);
@@ -296,9 +296,58 @@ async function loadInitialData() { /* 이전과 동일 */
   }
 }
 
-function setupEventListeners() { /* 이전과 동일 (mainCategory change 리스너 포함) */
+// ▒▒▒ 스와이프 제스처로 달력 월 변경 기능 ▒▒▒
+function setupSwipeListeners() {
+    const calendarElement = document.getElementById('calendarView'); // 스와이프를 감지할 주요 달력 영역 요소
+    if (!calendarElement) {
+        console.warn("[App.js] 스와이프 감지를 위한 달력 요소를 찾을 수 없습니다 ('calendarView').");
+        return;
+    }
+
+    let touchstartX = 0;
+    let touchendX = 0;
+    let touchstartY = 0; // 수직 스크롤과 구분하기 위함
+    let touchendY = 0;
+
+    const SWIPE_THRESHOLD = 50;      // 스와이프로 인정할 최소 수평 이동 거리 (px)
+    const SWIPE_MAX_VERTICAL = 75; // 수평 스와이프로 간주할 최대 수직 이동 거리 (px)
+                                   // 이 값보다 수직 이동이 크면 일반 스크롤로 간주하여 월 변경 안 함
+
+    calendarElement.addEventListener('touchstart', function(event) {
+        touchstartX = event.changedTouches[0].screenX;
+        touchstartY = event.changedTouches[0].screenY;
+    }, { passive: true }); // passive:true는 스크롤 성능 최적화를 위함 (preventDefault를 호출하지 않을 것이므로)
+
+    calendarElement.addEventListener('touchend', async function(event) { // changeMonth가 async이므로, 이 핸들러도 async
+        touchendX = event.changedTouches[0].screenX;
+        touchendY = event.changedTouches[0].screenY;
+        await handleSwipeGesture(); // 실제 스와이프 처리 함수 호출
+    }, false); // touchend는 일반적으로 passive:true와 큰 관계 없음
+
+    async function handleSwipeGesture() {
+        const deltaX = touchendX - touchstartX;
+        const deltaY = touchendY - touchstartY;
+
+        // 수평 이동 거리가 threshold보다 크고, 수직 이동은 maxVertical보다 작을 때만 스와이프로 처리
+        if (Math.abs(deltaX) > SWIPE_THRESHOLD && Math.abs(deltaY) < SWIPE_MAX_VERTICAL) {
+            if (deltaX > 0) {
+                // 오른쪽으로 스와이프 (손가락이 왼쪽에서 오른쪽으로 이동) -> 이전 달
+                console.log("[App.js] Swiped Right -> Previous Month");
+                await changeMonth(-1); // 기존 changeMonth 함수 사용
+            } else {
+                // 왼쪽으로 스와이프 (손가락이 오른쪽에서 왼쪽으로 이동) -> 다음 달
+                console.log("[App.js] Swiped Left -> Next Month");
+                await changeMonth(1);  // 기존 changeMonth 함수 사용
+            }
+        }
+    }
+}
+// ▒▒▒ 스와이프 제스처 기능 끝 ▒▒▒
+
+function setupEventListeners() {
   document.getElementById('transactionForm').addEventListener('submit', handleTransactionSubmit);
-  document.getElementById('mainCategory').addEventListener('change', updateSubCategories); 
+  document.getElementById('mainCategory').addEventListener('change', updateSubCategories);
+  setupSwipeListeners(); 
 }
 
 function toggleTypeSpecificFields() { /* 이전과 동일 */
