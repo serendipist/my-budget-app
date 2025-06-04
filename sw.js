@@ -45,9 +45,9 @@ self.addEventListener('activate', e => {
 });
 
 /* =============== fetch 가로채기 =============== */
-self.addEventListener('fetch', event => {        // ★ 매개변수 이름을 event 로 통일
-  const req  = event.request;                    // ★
-  const url  = new URL(req.url);
+self.addEventListener('fetch', e => {
+  const req = e.request;
+  const url = new URL(req.url);
 
   /* ------------ A. Apps Script GET 요청 (macros/s/...) ------------ */
   const isAppsScriptGet =
@@ -56,28 +56,22 @@ self.addEventListener('fetch', event => {        // ★ 매개변수 이름을 e
         url.pathname.startsWith('/macros/s/');
 
   if (isAppsScriptGet) {
-    event.respondWith(                           // ★ event.respondWith 로 수정
+    e.respondWith(                                 // ← e 로 통일
       caches.open(CACHE_API).then(async cache => {
-
         /* ① 캐시 우선 반환 */
         const cached = await cache.match(req);
 
         /* ② 백그라운드로 네트워크 갱신 */
         const fetchPromise = fetch(req).then(async resp => {
           if (resp.ok) {
-            /* 클론 2개(파싱용 · 캐시용) */
             const cloneForParse = resp.clone();
             const cloneForCache = resp.clone();
-
             try {
-              /* (B) 응답 JSON 파싱 후 빈 배열이면 캐시 생략 */
+              /* (B) 응답 JSON이 빈 배열이면 캐시 생략 */
               const json       = await cloneForParse.json();
               const shouldSkip = Array.isArray(json) && json.length === 0;
-
-              if (!shouldSkip) {
-                await cache.put(req, cloneForCache);
-              }
-            } catch (err) {
+              if (!shouldSkip) await cache.put(req, cloneForCache);
+            } catch (_) {
               /* JSON 파싱 실패 → 일반 응답으로 간주, 캐시 저장 */
               await cache.put(req, cloneForCache);
             }
