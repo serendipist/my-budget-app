@@ -195,9 +195,13 @@ function renderCalendar(year, monthOneBased, transactions){
   /* 날짜별 거래 배열 맵 */
   const transMap = {};
   (transactions||[]).forEach(t=>{
-     if(t && t.date){ (transMap[t.date]=transMap[t.date]||[]).push(t); }
+    if(t && t.date){ (transMap[t.date]=transMap[t.date]||[]).push(t); }
   });
 
+  // 오늘 날짜 확인 (이 부분은 선생님 코드에 이미 잘 들어가 있습니다)
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  
   const cycleStart = new Date(year, monthOneBased-1, 18);
   const cycleEnd   = new Date(year, monthOneBased,   17);
   let cur = new Date(cycleStart);
@@ -213,7 +217,17 @@ function renderCalendar(year, monthOneBased, transactions){
   while(cur<=cycleEnd){
     const td = document.createElement('td');
     const dStr = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
-    td.dataset.date=dStr; td.onclick=()=>openModal(dStr);
+    
+    // ▼▼▼ 이 부분을 추가하면 됩니다 ▼▼▼
+    // 현재 그리고 있는 날짜(dStr)가 오늘 날짜(todayStr)와 같으면,
+    // <td> 요소에 'today' 클래스를 추가합니다.
+    if (dStr === todayStr) {
+      td.classList.add('today');
+    }
+    // ▲▲▲ 여기까지 추가 ▲▲▲
+
+    td.dataset.date=dStr; 
+    td.onclick=()=>openModal(dStr);
 
     /* 날짜 숫자 */
     const num = document.createElement('span');
