@@ -1,6 +1,6 @@
 {
-  "name": "나의 스마트 가계부",
-  "short_name": "스마트가계부",
+  "name": "나온다온네 가계부",
+  "short_name": "나온다온네",
   "id": "smart-account-book-gh", // GitHub Pages용으로 id를 약간 변경해도 좋습니다 (선택 사항).
   "description": "GitHub Pages로 호스팅되는 나만의 스마트 가계부",
   "lang": "ko-KR",
