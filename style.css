@@ -461,3 +461,6 @@ body {
   cursor:pointer;
   text-align:right;
 }
+#calendarGrid td.today {
+  background-color: #e8f4f8; /* 연한 파란색 배경 (기존의 하이라이트 색상과 동일) */
+}
