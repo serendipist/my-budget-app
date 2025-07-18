@@ -655,40 +655,46 @@ async function changeCardMonth(d){ /* 이전과 동일 */
 }
 
 async function displayCardData() { /* 이전과 동일 (API 호출) */
-  const cardSel = document.getElementById('cardSelector');
-  const det = document.getElementById('cardDetails');
-  const lbl = document.getElementById('cardMonthLabel');
-  const loader = document.getElementById('loader');
-  if (!cardSel || !det || !lbl) return;
-  const card = cardSel.value;
+  const cardSel = document.getElementById('cardSelector');
+  const det = document.getElementById('cardDetails');
+  const lbl = document.getElementById('cardMonthLabel');
+  const loader = document.getElementById('loader');
+  if (!cardSel || !det || !lbl) return;
+  const card = cardSel.value;
 
-  if (!card){ det.innerHTML = '<p>카드를 선택해주세요.</p>'; lbl.textContent = ''; return; }
-  if(loader) loader.style.display = 'block';
+  if (!card){ det.innerHTML = '<p>카드를 선택해주세요.</p>'; lbl.textContent = ''; return; }
+  if(loader) loader.style.display = 'block';
 
-  const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
-  lbl.textContent = `${perfMonth} 기준`;
+  const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
+  lbl.textContent = `${perfMonth} 기준`;
 
-  try {
-    const d = await callAppsScriptApi('getCardData', { 
-      cardName: card, cycleMonthForBilling: currentCycleMonth, performanceReferenceMonth: perfMonth 
-    });
-    if (!d || d.success === false){
-      det.innerHTML = `<p>${d && d.error ? d.error : '카드 데이터 로딩 중 오류가 발생했습니다.'}</p>`;
-      throw new Error(d && d.error ? d.error : '카드 데이터 구조 오류 또는 API 실패');
-    }
-    const billingMonth = d.billingCycleMonthForCard || currentCycleMonth;
-    const perfRefMonthDisplay = d.performanceReferenceMonthForDisplay || perfMonth;
-    const billingAmt = Number(d.billingAmount) || 0;
-    const perfAmt = Number(d.performanceAmount) || 0;
-    const targetAmt = Number(d.performanceTarget) || 0;
-    const rate = targetAmt > 0 ? ((perfAmt/targetAmt)*100).toFixed(1)+'%' : '0%';
-    det.innerHTML = `<h4>${d.cardName || card}</h4> <p><strong>청구 기준월:</strong> ${billingMonth} (18일~다음달 17일)</p> <p><strong>청구 예정 금액:</strong> ${billingAmt.toLocaleString()}원</p><hr> <p><strong>실적 산정월:</strong> ${perfRefMonthDisplay}</p> <p><strong>현재 사용액(실적):</strong> ${perfAmt.toLocaleString()}원</p> <p><strong>실적 목표 금액:</strong> ${targetAmt.toLocaleString()}원</p> <p><strong>달성률:</strong> ${rate}</p> <p style="font-size:0.8em;color:grey;">(실적은 카드사의 실제 집계와 다를 수 있습니다)</p>`;
-  } catch (error) {
-    det.innerHTML = '<p>카드 데이터를 불러오는 데 실패했습니다.</p>';
-    console.error('displayCardData API call failed:', error);
-  } finally {
-    if(loader) loader.style.display = 'none';
-  }
+  try {
+    // ▼▼▼ 수정된 부분 ▼▼▼
+    // cycleMonthForBilling의 값을 currentCycleMonth에서 perfMonth로 변경합니다.
+    const d = await callAppsScriptApi('getCardData', {
+      cardName: card,
+      **cycleMonthForBilling: perfMonth,** // 이 부분을 수정했습니다.
+      performanceReferenceMonth: perfMonth
+    });
+    // ▲▲▲ 여기까지 수정 ▲▲▲
+
+    if (!d || d.success === false){
+      det.innerHTML = `<p>${d && d.error ? d.error : '카드 데이터 로딩 중 오류가 발생했습니다.'}</p>`;
+      throw new Error(d && d.error ? d.error : '카드 데이터 구조 오류 또는 API 실패');
+    }
+    const billingMonth = d.billingCycleMonthForCard || perfMonth; // 폴백 값도 perfMonth로 변경
+    const perfRefMonthDisplay = d.performanceReferenceMonthForDisplay || perfMonth;
+    const billingAmt = Number(d.billingAmount) || 0;
+    const perfAmt = Number(d.performanceAmount) || 0;
+    const targetAmt = Number(d.performanceTarget) || 0;
+    const rate = targetAmt > 0 ? ((perfAmt/targetAmt)*100).toFixed(1)+'%' : '0%';
+    det.innerHTML = `<h4>${d.cardName || card}</h4> <p><strong>청구 기준월:</strong> ${billingMonth} (18일~다음달 17일)</p> <p><strong>청구 예정 금액:</strong> ${billingAmt.toLocaleString()}원</p><hr> <p><strong>실적 산정월:</strong> ${perfRefMonthDisplay}</p> <p><strong>현재 사용액(실적):</strong> ${perfAmt.toLocaleString()}원</p> <p><strong>실적 목표 금액:</strong> ${targetAmt.toLocaleString()}원</p> <p><strong>달성률:</strong> ${rate}</p> <p style="font-size:0.8em;color:grey;">(실적은 카드사의 실제 집계와 다를 수 있습니다)</p>`;
+  } catch (error) {
+    det.innerHTML = '<p>카드 데이터를 불러오는 데 실패했습니다.</p>';
+    console.error('displayCardData API call failed:', error);
+  } finally {
+    if(loader) loader.style.display = 'none';
+  }
 }
 
 async function handleDelete() { /* 이전과 동일 (API 호출) */
