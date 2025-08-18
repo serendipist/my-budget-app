@@ -1,16 +1,14 @@
-// app.js - 최종 수정본 (검색 기능 및 버그 수정 완료)
+// app.js - 최종 수정본 (주기 검색 기능 추가)
 
-// ▼▼▼ 선생님의 실제 앱스 스크립트 웹앱 배포 URL로 반드시 교체해주세요!!! ▼▼▼
 const APPS_SCRIPT_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbzjP671pu6MMLKhmTXHwqCu-wci-Y-RM0Sl5TlQO0HmGsyrH83DBj6dsh62LqHIf-YD/exec";
-// ▲▲▲ 선생님의 실제 배포 URL을 다시 한번 확인해주세요. ▲▲▲
 
 /* === 전역 상태 === */
 let currentDisplayDate = new Date();
 let currentCycleMonth = '';
 let cardPerformanceMonthDate = new Date();
-let expenseCategoriesData = {}; // loadInitialData를 통해 채워짐
-let paymentMethodsData = [];    // loadInitialData를 통해 채워짐
-let incomeSourcesData = [];     // loadInitialData를 통해 채워짐
+let expenseCategoriesData = {};
+let paymentMethodsData = [];
+let incomeSourcesData = [];
 let currentEditingTransaction = null;
 
 /* === API 호출 헬퍼 함수 === */
@@ -20,27 +18,22 @@ async function callAppsScriptApi(actionName, params = {}) {
   for (const key in params) {
     url.searchParams.append(key, params[key]);
   }
-
-  console.log(`[API] Calling: ${actionName} with params: ${JSON.stringify(params)}, URL: ${url.toString()}`);
+  console.log(`[API] Calling: ${actionName} with params: ${JSON.stringify(params)}`);
   try {
     const response = await fetch(url.toString(), { method: 'GET' });
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[API] Call to "${actionName}" failed with status ${response.status}: ${errorText}`);
-      throw new Error(`서버 응답 오류 (${response.status})`);
+      throw new Error(`서버 응답 오류 (${response.status}): ${errorText}`);
     }
     const result = await response.json();
     if (result.success === false) {
-      console.error(`[API] Action "${actionName}" returned an error:`, result.error);
       throw new Error(result.error || `"${actionName}" API 요청 실패`);
     }
     return result.data !== undefined ? result.data : result;
   } catch (error) {
     console.error(`[API] Error calling action "${actionName}":`, error);
-    if (typeof showToast === 'function') {
-      showToast(`"${actionName}" API 요청 중 오류: ${error.message}`, true);
-    }
-    throw error; 
+    showToast?.(`API 요청 중 오류: ${error.message}`, true);
+    throw error;
   }
 }
 
@@ -53,42 +46,44 @@ function setViewportHeightVar(){
 setViewportHeightVar();
 
 function adjustCalendarHeight(){ /* 현재 사용 안 함 */ }
-function afterRender(){ setTimeout(adjustCalendarHeight, 0); } 
+function afterRender(){ setTimeout(adjustCalendarHeight, 0); }
 ['resize','orientationchange'].forEach(evt => {
   setViewportHeightVar();
   adjustCalendarHeight();
 });
+
 
 /* === 페이지 로드 순서 === */
 window.onload = async () => {
   console.log("[App.js] window.onload triggered");
   determineInitialCycleMonth();
   setupEventListeners();
- 
+  populateCycleDropdowns(); // 주기 선택 메뉴 채우기
+
   const loader = document.getElementById('loader');
   if(loader) loader.style.display = 'block';
-
   try {
-    await loadInitialData();    
-    await updateCalendarDisplay(); 
+    await loadInitialData();
+    await updateCalendarDisplay();
   } catch (error) {
     console.error("[App.js] Error during initial data loading:", error);
-    if (typeof showToast === 'function') showToast("초기 데이터 로딩 중 오류가 발생했습니다. 페이지를 새로고침해주세요.", true);
+    showToast?.("초기 데이터 로딩 중 오류가 발생했습니다.", true);
   } finally {
     if(loader) loader.style.display = 'none';
   }
-
   showView('calendarView');
-  toggleTypeSpecificFields(); 
-  const transactionModal = document.getElementById('transactionModal');
-  if (transactionModal) transactionModal.style.display = 'none';
-
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js', { scope: './' }) 
-      .then(registration => { console.log('[App.js] Service Worker 등록 성공. Scope:', registration.scope); })
-      .catch(error => { console.error('[App.js] Service Worker 등록 실패:', error); });
-  }
+  toggleTypeSpecificFields();
+  document.getElementById('transactionModal')?.style.display = 'none';
+  registerServiceWorker();
 };
+
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js', { scope: './' })
+      .then(reg => console.log('[SW] 등록 성공:', reg.scope))
+      .catch(err => console.error('[SW] 등록 실패:', err));
+  }
+}
 
 /* === 주기 계산 & 달력 === */
 function determineInitialCycleMonth(){
@@ -98,7 +93,6 @@ function determineInitialCycleMonth(){
   if(mIdx < 0){ mIdx = 11; year -= 1; }
   currentDisplayDate = new Date(year, mIdx, 18);
   currentCycleMonth = `${year}-${String(mIdx + 1).padStart(2,'0')}`;
-  console.log("[App.js] Initial cycle month determined:", currentCycleMonth);
 }
 
 async function changeMonth(delta){
@@ -106,22 +100,18 @@ async function changeMonth(delta){
   const y = currentDisplayDate.getFullYear();
   const m = currentDisplayDate.getMonth();
   currentCycleMonth = `${y}-${String(m + 1).padStart(2,'0')}`;
-  await updateCalendarDisplay(); 
+  await updateCalendarDisplay();
 }
 
 async function updateCalendarDisplay () {
-  const loader       = document.getElementById('loader');
-  const calendarBody = document.getElementById('calendarBody');
-  if (!calendarBody) { console.error('calendarBody not found'); return; }
+  const loader = document.getElementById('loader');
   if (loader) loader.style.display = 'block';
-
   console.log('[App.js] updateCalendarDisplay →', currentCycleMonth);
 
-  /* 1️⃣  캐시 우선 렌더링 */
-  const cacheKey           = 'transactions_' + currentCycleMonth;
-  const cachedDataString   = localStorage.getItem(cacheKey);
-  let   renderedFromCache    = false;
-  let   transactionsToRender = [];
+  const cacheKey = 'transactions_' + currentCycleMonth;
+  const cachedDataString = localStorage.getItem(cacheKey);
+  let renderedFromCache = false;
+  let transactionsToRender = [];
 
   if (cachedDataString) {
     try {
@@ -130,43 +120,25 @@ async function updateCalendarDisplay () {
         transactionsToRender = cachedArr;
         renderCalendarAndSummary(cachedArr);
         renderedFromCache = true;
-        console.log('[App.js] drew calendar from localStorage');
       } else {
         localStorage.removeItem(cacheKey);
       }
     } catch (err) {
-      console.warn('cache parse fail → drop', err);
       localStorage.removeItem(cacheKey);
     }
   }
 
-  if (!renderedFromCache) { // 캐시 미존재 시 빈 달력
-    calendarBody.innerHTML = '';
+  if (!renderedFromCache) {
     renderCalendarAndSummary([]);
   }
 
-  /* 2️⃣  네트워크 — stale-while-revalidate */
   try {
-    const latest = await callAppsScriptApi('getTransactions',
-                                          { cycleMonth: currentCycleMonth });
-
+    const latest = await callAppsScriptApi('getTransactions', { cycleMonth: currentCycleMonth });
     const finalTx = (latest && Array.isArray(latest)) ? latest : [];
-
-    if (renderedFromCache && finalTx.length === 0) {
-      console.warn('[App.js] API empty → keep cached view');
-      return;
-    }
-
-    /* 3️⃣  캐시 갱신 + 필요 시 재렌더 */
     localStorage.setItem(cacheKey, JSON.stringify(finalTx));
-
-    if (!renderedFromCache ||
-        JSON.stringify(transactionsToRender) !== JSON.stringify(finalTx)) {
+    if (!renderedFromCache || JSON.stringify(transactionsToRender) !== JSON.stringify(finalTx)) {
       renderCalendarAndSummary(finalTx);
-
-      if (renderedFromCache) {
-        showToast?.('달력 정보가 업데이트 되었습니다.', false);
-      }
+      if (renderedFromCache) showToast?.('달력 정보가 업데이트 되었습니다.', false);
     }
   } catch (err) {
     console.error('[App.js] getTransactions failed', err);
@@ -177,57 +149,37 @@ async function updateCalendarDisplay () {
 }
 
 function renderCalendarAndSummary(transactions){
-  if (!currentCycleMonth) { console.error("renderCalendarAndSummary: currentCycleMonth is not set."); return; }
-  const parts = currentCycleMonth.split('-');
-  if (parts.length < 2) { console.error("renderCalendarAndSummary: currentCycleMonth format is incorrect.", currentCycleMonth); return; }
-  const year = parseInt(parts[0], 10);
-  const month = parseInt(parts[1], 10);
+  const [year, month] = currentCycleMonth.split('-').map(Number);
   document.getElementById('currentMonthYear').textContent = `${year}년 ${String(month).padStart(2,'0')}월 주기`;
   renderCalendar(year, month, transactions);
   updateSummary(transactions);
 }
 
-function renderCalendar(year, monthOneBased, transactions){
+function renderCalendar(year, monthOneBased, transactions) {
   const calendarBody = document.getElementById('calendarBody');
   calendarBody.innerHTML = '';
-
   const transMap = {};
-  (transactions||[]).forEach(t=>{
-    if(t && t.date){ (transMap[t.date]=transMap[t.date]||[]).push(t); }
-  });
-
+  (transactions||[]).forEach(t=>{ if(t && t.date){ (transMap[t.date]=transMap[t.date]||[]).push(t); } });
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
- 
   const cycleStart = new Date(year, monthOneBased-1, 18);
   const cycleEnd   = new Date(year, monthOneBased,   17);
   let cur = new Date(cycleStart);
   let weekRow = document.createElement('tr');
   const frag = document.createDocumentFragment();
-
-  for(let i=0;i<cycleStart.getDay();i++){
-    const td=document.createElement('td'); td.className='other-month'; weekRow.appendChild(td);
-  }
-
+  for(let i=0;i<cycleStart.getDay();i++){ const td=document.createElement('td'); td.className='other-month'; weekRow.appendChild(td); }
   while(cur<=cycleEnd){
     const td = document.createElement('td');
     const dStr = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
-   
-    if (dStr === todayStr) {
-      td.classList.add('today');
-    }
-
-    td.dataset.date=dStr; 
+    if (dStr === todayStr) { td.classList.add('today'); }
+    td.dataset.date=dStr;
     td.onclick=()=>openModal(dStr);
-
     const num = document.createElement('span');
     num.className='date-number';
     num.textContent=cur.getDate();
     td.appendChild(num);
-
     const wrap=document.createElement('div');
     wrap.className='txn-wrap';
-
     const list = transMap[dStr]||[];
     list.slice(0,4).forEach(t=>{
       const div=document.createElement('div');
@@ -243,16 +195,10 @@ function renderCalendar(year, monthOneBased, transactions){
       wrap.appendChild(more);
     }
     td.appendChild(wrap);
-
     weekRow.appendChild(td);
-
     if(cur.getDay()===6 || cur.getTime()===cycleEnd.getTime()){
       if(cur.getTime()===cycleEnd.getTime() && cur.getDay()!==6){
-        for(let i=cur.getDay()+1;i<=6;i++){
-          const empty=document.createElement('td');
-          empty.className='other-month';
-          weekRow.appendChild(empty);
-        }
+        for(let i=cur.getDay()+1;i<=6;i++){ const empty=document.createElement('td'); empty.className='other-month'; weekRow.appendChild(empty); }
       }
       frag.appendChild(weekRow);
       if(cur.getTime()!==cycleEnd.getTime()) weekRow=document.createElement('tr');
@@ -270,494 +216,394 @@ function updateSummary(transactions){
   document.getElementById('totalIncome').textContent = `₩${inc.toLocaleString()}`;
   document.getElementById('totalExpense').textContent = `₩${exp.toLocaleString()}`;
   const balEl = document.getElementById('totalBalance');
-  balEl.textContent = `₩${bal.toLocaleString()}`; balEl.className = 'total-balance'; 
+  balEl.textContent = `₩${bal.toLocaleString()}`; balEl.className = 'total-balance';
   if (bal < 0) balEl.classList.add('negative');
 }
 
 async function loadInitialData() {
-  console.log("[App.js] loadInitialData: Fetching app setup data via API...");
   try {
-    const setupData = await callAppsScriptApi('getAppSetupData', { initialCycleMonth: currentCycleMonth }); 
-    if (setupData) { 
-      expenseCategoriesData = setupData.expenseCategories || {};
-      paymentMethodsData    = setupData.paymentMethods    || [];
-      incomeSourcesData     = setupData.incomeSources     || [];
-      if (setupData.initialTransactions && Array.isArray(setupData.initialTransactions)) {
-        console.log("[App.js] Initial transactions received from getAppSetupData and caching to localStorage for cycle:", currentCycleMonth);
-        localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(setupData.initialTransactions));
-      }
-      populateFormDropdowns(); 
-      populateCardSelector();  
-      if (typeof showToast === 'function') showToast('앱 설정을 불러왔습니다.', false);
-    } else {
-      if (typeof showToast === 'function') showToast('앱 설정 데이터를 가져오지 못했습니다.', true);
+    const setupData = await callAppsScriptApi('getAppSetupData', { initialCycleMonth: currentCycleMonth });
+    expenseCategoriesData = setupData.expenseCategories || {};
+    paymentMethodsData    = setupData.paymentMethods    || [];
+    incomeSourcesData     = setupData.incomeSources     || [];
+    if (setupData.initialTransactions) {
+      localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(setupData.initialTransactions));
     }
+    populateFormDropdowns();
+    populateCardSelector();
   } catch (error) {
     console.error('loadInitialData API call failed:', error);
   }
 }
 
-function setupSwipeListeners() {
-    const calendarElement = document.getElementById('calendarView');
-    if (!calendarElement) {
-        console.warn("[App.js] 스와이프 감지를 위한 달력 요소를 찾을 수 없습니다 ('calendarView').");
-        return;
-    }
-
-    let touchstartX = 0;
-    let touchendX = 0;
-    let touchstartY = 0;
-    let touchendY = 0;
-
-    const SWIPE_THRESHOLD = 50;
-    const SWIPE_MAX_VERTICAL = 75;
-
-    calendarElement.addEventListener('touchstart', function(event) {
-        touchstartX = event.changedTouches[0].screenX;
-        touchstartY = event.changedTouches[0].screenY;
-    }, { passive: true });
-
-    calendarElement.addEventListener('touchend', async function(event) {
-        touchendX = event.changedTouches[0].screenX;
-        touchendY = event.changedTouches[0].screenY;
-        await handleSwipeGesture();
-    }, false);
-
-    async function handleSwipeGesture() {
-        const deltaX = touchendX - touchstartX;
-        const deltaY = touchendY - touchstartY;
-
-        if (Math.abs(deltaX) > SWIPE_THRESHOLD && Math.abs(deltaY) < SWIPE_MAX_VERTICAL) {
-            if (deltaX > 0) {
-                console.log("[App.js] Swiped Right -> Previous Month");
-                await changeMonth(-1);
-            } else {
-                console.log("[App.js] Swiped Left -> Next Month");
-                await changeMonth(1); 
-            }
-        }
-    }
-}
-
 function setupEventListeners() {
   document.getElementById('transactionForm').addEventListener('submit', handleTransactionSubmit);
   document.getElementById('mainCategory').addEventListener('change', updateSubCategories);
-  setupSwipeListeners(); 
+  setupSwipeListeners();
+}
+
+function setupSwipeListeners() {
+    const calendarElement = document.getElementById('calendarView');
+    if (!calendarElement) return;
+    let touchstartX = 0, touchendX = 0, touchstartY = 0, touchendY = 0;
+    const SWIPE_THRESHOLD = 50, SWIPE_MAX_VERTICAL = 75;
+    calendarElement.addEventListener('touchstart', e => { touchstartX = e.changedTouches[0].screenX; touchstartY = e.changedTouches[0].screenY; }, { passive: true });
+    calendarElement.addEventListener('touchend', async e => {
+        touchendX = e.changedTouches[0].screenX;
+        touchendY = e.changedTouches[0].screenY;
+        const deltaX = touchendX - touchstartX, deltaY = touchendY - touchstartY;
+        if (Math.abs(deltaX) > SWIPE_THRESHOLD && Math.abs(deltaY) < SWIPE_MAX_VERTICAL) {
+            await changeMonth(deltaX > 0 ? -1 : 1);
+        }
+    });
 }
 
 function toggleTypeSpecificFields() {
-  const typeRadio = document.querySelector('input[name="type"]:checked');
-  let type = '지출'; 
-  if (typeRadio) { type = typeRadio.value;
-  } else { const defaultExpenseRadio = document.querySelector('input[name="type"][value="지출"]');
-    if (defaultExpenseRadio) defaultExpenseRadio.checked = true;
-  }
-  document.getElementById('expenseSpecificFields').style.display = type === '지출' ? 'block' : 'none';
-  document.getElementById('incomeSpecificFields').style.display  = type === '수입' ? 'block' : 'none';
+    const type = document.querySelector('input[name="type"]:checked')?.value || '지출';
+    document.getElementById('expenseSpecificFields').style.display = type === '지출' ? 'block' : 'none';
+    document.getElementById('incomeSpecificFields').style.display = type === '수입' ? 'block' : 'none';
 }
 
 function populateFormDropdowns() {
-  const pm = document.getElementById('paymentMethod');
-  pm.innerHTML = '<option value="">선택하세요</option>';
-  (paymentMethodsData||[]).forEach(m=>{ const o=document.createElement('option'); o.value=m.name; o.textContent=m.name; pm.appendChild(o); });
-  const mainSel = document.getElementById('mainCategory');
-  mainSel.innerHTML = '<option value="">선택하세요</option>';
-  for (const k in expenseCategoriesData) { const o=document.createElement('option'); o.value=k; o.textContent=k; mainSel.appendChild(o); }
-  updateSubCategories(); 
-  const incSel = document.getElementById('incomeSource');
-  incSel.innerHTML='<option value="">선택하세요</option>';
-  (incomeSourcesData||[]).forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; incSel.appendChild(o); });
+    const pm = document.getElementById('paymentMethod');
+    pm.innerHTML = '<option value="">선택</option>';
+    (paymentMethodsData||[]).forEach(m=>{ const o=document.createElement('option'); o.value=m.name; o.textContent=m.name; pm.appendChild(o); });
+    const mainSel = document.getElementById('mainCategory');
+    mainSel.innerHTML = '<option value="">선택</option>';
+    for (const k in expenseCategoriesData) { const o=document.createElement('option'); o.value=k; o.textContent=k; mainSel.appendChild(o); }
+    updateSubCategories();
+    const incSel = document.getElementById('incomeSource');
+    incSel.innerHTML='<option value="">선택</option>';
+    (incomeSourcesData||[]).forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; incSel.appendChild(o); });
 }
 
 function updateSubCategories() {
-  const mainCategorySelect = document.getElementById('mainCategory');
-  const subCategorySelect = document.getElementById('subCategory');
-  if (!mainCategorySelect || !subCategorySelect) {
-    console.warn('[updateSubCategories] 주 또는 하위 카테고리 Select 요소를 찾을 수 없습니다.');
-    return;
-  }
-  const mainCategoryValue = mainCategorySelect.value;
-  console.log(`[updateSubCategories] 주 카테고리 값 '${mainCategoryValue}' 기준으로 하위 목록 업데이트 시작.`);
-  subCategorySelect.innerHTML = '<option value="">선택하세요</option>'; 
-  if (expenseCategoriesData && expenseCategoriesData[mainCategoryValue] && Array.isArray(expenseCategoriesData[mainCategoryValue])) {
-    expenseCategoriesData[mainCategoryValue].forEach(subCat => {
-      const option = document.createElement('option');
-      option.value = subCat; option.textContent = subCat;
-      subCategorySelect.appendChild(option);
-    });
-    console.log(`[updateSubCategories] '${mainCategoryValue}'에 대한 하위 카테고리 (${expenseCategoriesData[mainCategoryValue].length}개) 목록 생성 완료.`);
-  } else {
-    console.log(`[updateSubCategories] 주 카테고리 '${mainCategoryValue}'에 대한 하위 카테고리 데이터가 없습니다.`);
-  }
+    const mainSel = document.getElementById('mainCategory'), subSel = document.getElementById('subCategory'), mainVal = mainSel.value;
+    subSel.innerHTML = '<option value="">선택</option>';
+    if (expenseCategoriesData?.[mainVal]?.length) {
+        expenseCategoriesData[mainVal].forEach(sub => { const o=document.createElement('option'); o.value=sub; o.textContent=sub; subSel.appendChild(o); });
+    }
 }
 
 async function handleTransactionSubmit(e) {
-  e.preventDefault();
-  const form = e.target;
-  const fd = new FormData(form);
-  const transactionData = {};
-  fd.forEach((v, k) => transactionData[k] = v);
-
-  if (!validateTransactionData(transactionData)) return;
-
-  const isEditing = currentEditingTransaction && typeof currentEditingTransaction.row !== 'undefined';
-  const originalData = JSON.parse(localStorage.getItem('transactions_' + currentCycleMonth) || '[]');
-  let optimisticData = JSON.parse(JSON.stringify(originalData)); 
-  const tempRowId = `temp-${Date.now()}`;
-  let itemForServer = { ...transactionData }; 
-
-  if (isEditing) {
-    const index = optimisticData.findIndex(t => t && typeof t.row !== 'undefined' && t.row.toString() === currentEditingTransaction.row.toString());
-    if (index > -1) {
-      itemForServer.id_to_update = currentEditingTransaction.row; 
-      optimisticData[index] = { ...optimisticData[index], ...transactionData }; 
-      if (optimisticData[index].type === '수입') { 
-        optimisticData[index].category1 = transactionData.incomeSource || ''; 
-        optimisticData[index].category2 = '';
-      } else { 
-        optimisticData[index].category1 = transactionData.mainCategory || ''; 
-        optimisticData[index].category2 = transactionData.subCategory || '';
-      }
+    e.preventDefault();
+    const fd = new FormData(e.target), data = {};
+    fd.forEach((v, k) => data[k] = v);
+    if (!validateTransactionData(data)) return;
+    const isEditing = !!currentEditingTransaction?.row;
+    const key = 'transactions_' + currentCycleMonth;
+    const originalData = JSON.parse(localStorage.getItem(key) || '[]');
+    let optimisticData = JSON.parse(JSON.stringify(originalData));
+    const itemForServer = { ...data };
+    if (isEditing) {
+        const index = optimisticData.findIndex(t => t?.row?.toString() === currentEditingTransaction.row.toString());
+        if (index > -1) {
+            itemForServer.id_to_update = currentEditingTransaction.row;
+            optimisticData[index] = { ...optimisticData[index], ...data, category1: data.type === '수입' ? data.incomeSource : data.mainCategory, category2: data.type === '수입' ? '' : data.subCategory };
+        }
+    } else {
+        optimisticData.push({ ...data, row: `temp-${Date.now()}`, category1: data.type === '수입' ? data.incomeSource : data.mainCategory, category2: data.type === '수입' ? '' : data.subCategory });
     }
-  } else {
-    const newItemForUI = { ...transactionData, row: tempRowId };
-     if (newItemForUI.type === '수입') {
-        newItemForUI.category1 = transactionData.incomeSource || ''; newItemForUI.category2 = '';
-      } else { 
-        newItemForUI.category1 = transactionData.mainCategory || ''; newItemForUI.category2 = transactionData.subCategory || '';
-      }
-    optimisticData.push(newItemForUI);
-  }
- 
-  localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(optimisticData));
-  renderCalendarAndSummary(optimisticData);
-  if (typeof showToast === 'function') showToast(isEditing ? '수정 사항 전송 중...' : '저장 사항 전송 중...');
-  if (typeof closeModal === 'function') closeModal();
-
-  const action = isEditing ? 'updateTransaction' : 'addTransaction';
-  try {
-    const serverResult = await callAppsScriptApi(action, { transactionDataString: JSON.stringify(itemForServer) });
-    if (serverResult.success) {
-      if (typeof showToast === 'function') showToast(serverResult.message || (isEditing ? '수정 완료!' : '저장 완료!'), false);
-      await updateCalendarDisplay(); 
-    } else { 
-      throw new Error(serverResult.message || serverResult.error || '서버 작업 처리 실패');
+    localStorage.setItem(key, JSON.stringify(optimisticData));
+    renderCalendarAndSummary(optimisticData);
+    showToast(isEditing ? '수정 중...' : '저장 중...');
+    closeModal();
+    try {
+        const result = await callAppsScriptApi(isEditing ? 'updateTransaction' : 'addTransaction', { transactionDataString: JSON.stringify(itemForServer) });
+        if (result.success) {
+            showToast(result.message || '완료!', false);
+            await updateCalendarDisplay();
+        } else {
+            throw new Error(result.message || '서버 처리 실패');
+        }
+    } catch (error) {
+        showToast(`실패: ${error.message}`, true);
+        localStorage.setItem(key, JSON.stringify(originalData));
+        renderCalendarAndSummary(originalData);
     }
-  } catch (error) { 
-    if (typeof showToast === 'function') showToast((isEditing ? '수정 실패: ' : '저장 실패: ') + error.message, true);
-    localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(originalData)); 
-    renderCalendarAndSummary(originalData);
-  }
 }
 
 function validateTransactionData(data) {
-  if (!data.date || !data.amount || !data.content) {
-    if (typeof showToast === 'function') showToast("날짜, 금액, 내용은 필수입니다.", true); 
-    return false;
-  }
-  if (data.type === '지출' && (!data.paymentMethod || !data.mainCategory)) { // 하위 카테고리는 선택사항일 수 있음
-    if (typeof showToast === 'function') showToast("지출 시 결제수단과 주 카테고리는 필수입니다.", true); 
-    return false;
-  }
-  if (data.type === '수입' && !data.incomeSource) {
-    if (typeof showToast === 'function') showToast("수입 시 수입원은 필수입니다.", true); 
-    return false;
-  }
-  return true;
+    if (!data.date || !data.amount || !data.content) { showToast("날짜, 금액, 내용은 필수입니다.", true); return false; }
+    if (data.type === '지출' && (!data.paymentMethod || !data.mainCategory)) { showToast("지출 시 결제수단과 주 카테고리는 필수입니다.", true); return false; }
+    if (data.type === '수입' && !data.incomeSource) { showToast("수입 시 수입원은 필수입니다.", true); return false; }
+    return true;
 }
 
 async function openModal(dateStr) {
-  document.getElementById('transactionForm').reset();
-  currentEditingTransaction = null; 
-  document.getElementById('deleteBtn').style.display = 'none';
-  document.getElementById('modalTitle').textContent = '거래 추가';
-  document.getElementById('transactionDate').value = dateStr;
-  toggleTypeSpecificFields(); 
-  document.getElementById('dailyTransactionList').innerHTML = '불러오는 중...';
-  document.getElementById('dailyTransactions').style.display = 'none'; 
-  document.getElementById('toggleDailyTransactions').textContent = '거래 내역 보기';
-  document.getElementById('transactionModal').style.display = 'flex'; 
-  await loadDailyTransactions(dateStr);
+    document.getElementById('transactionForm').reset();
+    currentEditingTransaction = null;
+    document.getElementById('deleteBtn').style.display = 'none';
+    document.getElementById('modalTitle').textContent = '거래 추가';
+    document.getElementById('transactionDate').value = dateStr;
+    toggleTypeSpecificFields();
+    document.getElementById('dailyTransactionList').innerHTML = '불러오는 중...';
+    document.getElementById('dailyTransactions').style.display = 'none';
+    document.getElementById('toggleDailyTransactions').textContent = '거래 내역 보기';
+    document.getElementById('transactionModal').style.display = 'flex';
+    await loadDailyTransactions(dateStr);
 }
 
 function closeModal(){
-  const transactionModal = document.getElementById('transactionModal');
-  if (transactionModal) transactionModal.style.display='none'; 
+    document.getElementById('transactionModal').style.display='none';
 }
 
 function toggleDailyTransactionVisibility() {
-  const dailySection = document.getElementById('dailyTransactions');
-  const toggleBtn = document.getElementById('toggleDailyTransactions');
-  const isHidden = dailySection.style.display === 'none';
-  if (isHidden) { dailySection.style.display = 'block'; toggleBtn.textContent = '거래 내역 숨기기';
-  } else {
-    dailySection.style.display = 'none'; toggleBtn.textContent = '거래 내역 보기';
-    const preservedDate = document.getElementById('transactionDate').value;
-    document.getElementById('transactionForm').reset();
-    document.getElementById('transactionDate').value = preservedDate;
-    document.getElementById('modalTitle').textContent = '거래 추가';
-    document.getElementById('deleteBtn').style.display = 'none';
-    currentEditingTransaction = null; toggleTypeSpecificFields();
-  }
+    const dailySection = document.getElementById('dailyTransactions');
+    const toggleBtn = document.getElementById('toggleDailyTransactions');
+    const isHidden = dailySection.style.display === 'none';
+    dailySection.style.display = isHidden ? 'block' : 'none';
+    toggleBtn.textContent = isHidden ? '거래 내역 숨기기' : '거래 내역 보기';
+    if (!isHidden) {
+        const date = document.getElementById('transactionDate').value;
+        document.getElementById('transactionForm').reset();
+        document.getElementById('transactionDate').value = date;
+        document.getElementById('modalTitle').textContent = '거래 추가';
+        document.getElementById('deleteBtn').style.display = 'none';
+        currentEditingTransaction = null;
+        toggleTypeSpecificFields();
+    }
 }
 
 async function loadDailyTransactions(dateStr) {
-  const list = document.getElementById('dailyTransactionList');
-  if (!list) return;
-  list.textContent = '불러오는 중...';
-  try {
-    const dailyData = await callAppsScriptApi('getTransactionsByDate', { date: dateStr });
-    displayDailyTransactions(dailyData || [], dateStr);
-  } catch (error) {
-    console.error('loadDailyTransactions API call failed for date ' + dateStr + ':', error);
-    if (list) list.textContent = '일일 거래 내역 로딩 실패.';
-  }
+    const list = document.getElementById('dailyTransactionList');
+    list.textContent = '불러오는 중...';
+    try {
+        const dailyData = await callAppsScriptApi('getTransactionsByDate', { date: dateStr });
+        displayDailyTransactions(dailyData || []);
+    } catch (error) {
+        list.textContent = '일일 내역 로딩 실패.';
+    }
 }
 
-function displayDailyTransactions(arr, dateStr) {
-  const list = document.getElementById('dailyTransactionList');
-  if (!list) return;
-  if (arr && arr.error) { list.textContent = '내역 로딩 오류: ' + arr.error; return; }
-  if (!Array.isArray(arr) || arr.length === 0) { list.textContent = '해당 날짜의 거래 내역이 없습니다.'; return; }
-  list.innerHTML = '';
-  arr.forEach(function(t) {
-    if (!t || typeof t.type === 'undefined') return;
-    const d = document.createElement('div');
-    d.classList.add('transaction-item', t.type === '수입' ? 'income' : 'expense');
-    let txt = `[${t.type}] ${t.content || '(내용 없음)'}: ${Number(t.amount || 0).toLocaleString()}원`;
-    if (t.type === '지출' && t.paymentMethod) txt += ` (${t.paymentMethod})`;
-    if (t.category1) txt += ` - ${t.category1}`;
-    if (t.category2) txt += ` / ${t.category2}`;
-    d.textContent = txt; d.style.cursor = 'pointer'; d.title = '클릭하여 이 내용 수정하기';
-    d.addEventListener('click', function() { populateFormForEdit(t); });
-    list.appendChild(d);
-  });
+function displayDailyTransactions(arr) {
+    const list = document.getElementById('dailyTransactionList');
+    if (!Array.isArray(arr) || arr.length === 0) {
+        list.textContent = '해당 날짜의 거래 내역이 없습니다.';
+        return;
+    }
+    list.innerHTML = '';
+    arr.forEach(t => {
+        const d = document.createElement('div');
+        d.className = `transaction-item ${t.type === '수입' ? 'income' : 'expense'}`;
+        let txt = `[${t.type}] ${t.content}: ${Number(t.amount).toLocaleString()}원`;
+        if (t.type === '지출') {
+            txt += ` (${t.paymentMethod || ''} - ${t.category1 || ''}${t.category2 ? '/' + t.category2 : ''})`;
+        } else {
+            txt += ` (${t.category1 || ''})`;
+        }
+        d.style.cursor = 'pointer';
+        d.textContent = txt;
+        d.onclick = () => populateFormForEdit(t);
+        list.appendChild(d);
+    });
 }
 
 function populateFormForEdit(transaction) {
-  if (!transaction || typeof transaction.row === 'undefined') {
-    console.error('[populateFormForEdit] 유효하지 않은 거래 데이터입니다.', transaction);
-    if (typeof showToast === 'function') showToast('거래 정보를 불러오지 못했습니다. (ID 누락)', true); 
-    return;
-  }
-  console.log('[populateFormForEdit] 수정할 거래 원본 데이터:', JSON.parse(JSON.stringify(transaction)));
-  currentEditingTransaction = transaction; 
- 
-  const form = document.getElementById('transactionForm');
-  if (form) form.reset(); 
- 
-  document.getElementById('modalTitle').textContent = '거래 수정';
-
-  document.getElementById('transactionDate').value = transaction.date || '';
-  document.getElementById('transactionAmount').value = transaction.amount || '';
-  document.getElementById('transactionContent').value = transaction.content || '';
-
-  document.querySelectorAll('input[name="type"]').forEach(r => {
-    r.checked = (r.value === transaction.type);
-  });
-  toggleTypeSpecificFields();
-
-  if (transaction.type === '지출') {
-    console.log('[populateFormForEdit] 지출 유형 필드 채우기 시작');
-   
-    const paymentMethodSelect = document.getElementById('paymentMethod');
-    if (paymentMethodSelect) paymentMethodSelect.value = transaction.paymentMethod || '';
-   
-    const mainCategorySelect = document.getElementById('mainCategory');
-    if (mainCategorySelect) {
-      mainCategorySelect.value = transaction.category1 || ''; 
-      console.log(`[populateFormForEdit] 주 카테고리(${mainCategorySelect.id})에 설정 시도: '${transaction.category1}', 실제 설정된 값: '${mainCategorySelect.value}'`);
-     
-      updateSubCategories(); 
-     
-      const subCategorySelect = document.getElementById('subCategory');
-      if (subCategorySelect) {
-        subCategorySelect.value = transaction.category2 || '';
-        console.log(`[populateFormForEdit] 하위 카테고리(${subCategorySelect.id})에 설정 시도: '${transaction.category2}', 실제 설정된 값: '${subCategorySelect.value}'`);
-       
-        if (transaction.category2 && subCategorySelect.value !== transaction.category2) {
-            console.warn(`[populateFormForEdit] 하위 카테고리 '${transaction.category2}' 설정 실패. 사용 가능한 옵션:`, Array.from(subCategorySelect.options).map(opt => opt.value));
-        }
-      }
+    if (!transaction?.row) { showToast('유효하지 않은 거래 데이터입니다.', true); return; }
+    currentEditingTransaction = transaction;
+    document.getElementById('transactionForm').reset();
+    document.getElementById('modalTitle').textContent = '거래 수정';
+    document.getElementById('transactionDate').value = transaction.date;
+    document.getElementById('transactionAmount').value = transaction.amount;
+    document.getElementById('transactionContent').value = transaction.content;
+    document.querySelectorAll('input[name="type"]').forEach(r => r.checked = r.value === transaction.type);
+    toggleTypeSpecificFields();
+    if (transaction.type === '지출') {
+        document.getElementById('paymentMethod').value = transaction.paymentMethod;
+        document.getElementById('mainCategory').value = transaction.category1;
+        updateSubCategories();
+        document.getElementById('subCategory').value = transaction.category2;
+    } else {
+        document.getElementById('incomeSource').value = transaction.category1;
     }
-  } else if (transaction.type === '수입') {
-    console.log('[populateFormForEdit] 수입 유형 필드 채우기 시작');
-    const incomeSourceSelect = document.getElementById('incomeSource');
-    if (incomeSourceSelect) incomeSourceSelect.value = transaction.category1 || ''; 
-  }
-
-  const deleteBtn = document.getElementById('deleteBtn');
-  if (deleteBtn) deleteBtn.style.display = 'block';
+    document.getElementById('deleteBtn').style.display = 'block';
 }
 
 function showView(id){
-  document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-  document.querySelectorAll('.tab-button').forEach(b=>b.classList.remove('active'));
-  document.querySelector(`.tab-button[onclick="showView('${id}')"]`).classList.add('active');
-  if(id==='cardView'){
-    cardPerformanceMonthDate = new Date(); 
-    displayCardData();
-  }
+    document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.querySelectorAll('.tab-button').forEach(b=>b.classList.remove('active'));
+    document.querySelector(`.tab-button[onclick="showView('${id}')"]`).classList.add('active');
+    if(id==='cardView'){
+        cardPerformanceMonthDate = new Date();
+        displayCardData();
+    }
 }
 
-function showToast(msg,isErr=false){
-  const t = document.getElementById('toast');
-  if (!t) return;
-  t.textContent = msg; t.style.backgroundColor = isErr ? '#dc3545' : '#28a745'; 
-  t.style.visibility = 'visible'; t.style.opacity = '1';
-  setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=> t.style.visibility = 'hidden', 500); }, 3000);
+function showToast(msg, isErr = false) {
+    const t = document.getElementById('toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.className = `show ${isErr ? 'error' : 'success'}`;
+    setTimeout(() => {
+        t.className = t.className.replace("show", "");
+    }, 3000);
 }
 
 function populateCardSelector(){
-  const sel = document.getElementById('cardSelector');
-  if (!sel) return;
-  const currentCard = sel.value; 
-  sel.innerHTML='<option value="">카드를 선택하세요</option>';
-  (paymentMethodsData||[]).filter(m=>m.isCard).forEach(c=>{
-    const o=document.createElement('option'); o.value=c.name; o.textContent=c.name; sel.appendChild(o);
-  });
-  if (currentCard && sel.querySelector(`option[value="${currentCard}"]`)) { sel.value = currentCard; }
+    const sel = document.getElementById('cardSelector');
+    const currentCard = sel.value;
+    sel.innerHTML='<option value="">카드 선택</option>';
+    (paymentMethodsData||[]).filter(m=>m.isCard).forEach(c=>{ const o=document.createElement('option'); o.value=c.name; o.textContent=c.name; sel.appendChild(o); });
+    if (currentCard) sel.value = currentCard;
 }
 
 async function changeCardMonth(d){
-  cardPerformanceMonthDate.setMonth(cardPerformanceMonthDate.getMonth()+d); 
-  await displayCardData(); 
+    cardPerformanceMonthDate.setMonth(cardPerformanceMonthDate.getMonth()+d);
+    await displayCardData();
 }
 
 async function displayCardData() {
-  const cardSel = document.getElementById('cardSelector');
-  const det = document.getElementById('cardDetails');
-  const lbl = document.getElementById('cardMonthLabel');
-  const loader = document.getElementById('loader');
-  if (!cardSel || !det || !lbl) return;
-  const card = cardSel.value;
-
-  if (!card){ det.innerHTML = '<p>카드를 선택해주세요.</p>'; lbl.textContent = ''; return; }
-  if(loader) loader.style.display = 'block';
-
-  const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
-  lbl.textContent = `${perfMonth} 기준`;
-
-  try {
-    const d = await callAppsScriptApi('getCardData', {
-      cardName: card,
-      cycleMonthForBilling: perfMonth,
-      performanceReferenceMonth: perfMonth
-    });
-
-    if (!d || d.success === false){
-      det.innerHTML = `<p>${d && d.error ? d.error : '카드 데이터 로딩 중 오류가 발생했습니다.'}</p>`;
-      throw new Error(d && d.error ? d.error : '카드 데이터 구조 오류 또는 API 실패');
+    const cardSel = document.getElementById('cardSelector'), det = document.getElementById('cardDetails'), lbl = document.getElementById('cardMonthLabel'), loader = document.getElementById('loader');
+    const card = cardSel.value;
+    if (!card){ det.innerHTML = '<p>카드를 선택해주세요.</p>'; lbl.textContent = ''; return; }
+    if(loader) loader.style.display = 'block';
+    const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
+    lbl.textContent = `${perfMonth} 기준`;
+    try {
+        const d = await callAppsScriptApi('getCardData', { cardName: card, cycleMonthForBilling: perfMonth, performanceReferenceMonth: perfMonth });
+        const rate = d.performanceTarget > 0 ? ((d.performanceAmount/d.performanceTarget)*100).toFixed(1)+'%' : '0%';
+        det.innerHTML = `<h4>${d.cardName}</h4><p><strong>청구 예정:</strong> ${Number(d.billingAmount).toLocaleString()}원</p><p><strong>현재 실적:</strong> ${Number(d.performanceAmount).toLocaleString()}원 / ${Number(d.performanceTarget).toLocaleString()}원 (${rate})</p>`;
+    } catch (error) {
+        det.innerHTML = '<p>데이터 로딩 실패.</p>';
+    } finally {
+        if(loader) loader.style.display = 'none';
     }
-    const billingMonth = d.billingCycleMonthForCard || perfMonth;
-    const perfRefMonthDisplay = d.performanceReferenceMonthForDisplay || perfMonth;
-    const billingAmt = Number(d.billingAmount) || 0;
-    const perfAmt = Number(d.performanceAmount) || 0;
-    const targetAmt = Number(d.performanceTarget) || 0;
-    const rate = targetAmt > 0 ? ((perfAmt/targetAmt)*100).toFixed(1)+'%' : '0%';
-    det.innerHTML = `<h4>${d.cardName || card}</h4> <p><strong>청구 기준월:</strong> ${billingMonth} (18일~다음달 17일)</p> <p><strong>청구 예정 금액:</strong> ${billingAmt.toLocaleString()}원</p><hr> <p><strong>실적 산정월:</strong> ${perfRefMonthDisplay}</p> <p><strong>현재 사용액(실적):</strong> ${perfAmt.toLocaleString()}원</p> <p><strong>실적 목표 금액:</strong> ${targetAmt.toLocaleString()}원</p> <p><strong>달성률:</strong> ${rate}</p> <p style="font-size:0.8em;color:grey;">(실적은 카드사의 실제 집계와 다를 수 있습니다)</p>`;
-  } catch (error) {
-    det.innerHTML = '<p>카드 데이터를 불러오는 데 실패했습니다.</p>';
-    console.error('displayCardData API call failed:', error);
-  } finally {
-    if(loader) loader.style.display = 'none';
-  }
 }
 
 async function handleDelete() {
-  if (!currentEditingTransaction || typeof currentEditingTransaction.row === 'undefined') {
-    showToast('삭제할 거래를 먼저 선택하거나, 유효한 거래가 아닙니다.', true); return;
-  }
-  const rowId = currentEditingTransaction.row; 
-  const isTemp = typeof rowId === 'string' && rowId.startsWith('temp-');
-  const key = 'transactions_' + currentCycleMonth;
-  const originalData = JSON.parse(localStorage.getItem(key) || '[]');
- 
-  const filteredData = originalData.filter(t => t && typeof t.row !== 'undefined' && t.row.toString() !== rowId.toString());
-  localStorage.setItem(key, JSON.stringify(filteredData));
-  renderCalendarAndSummary(filteredData);
-  closeModal();
-  showToast(isTemp ? '임시 입력을 삭제했습니다.' : '삭제를 서버에 전송 중...');
-
-  if (isTemp) return; 
-
-  try {
-    const serverResult = await callAppsScriptApi('deleteTransaction', { id_to_delete: Number(rowId) }); 
-    if (serverResult.success) {
-      showToast(serverResult.message || '삭제 완료!', false);
-      await updateCalendarDisplay(); 
-    } else {
-      throw new Error(serverResult.message || serverResult.error || '서버에서 삭제 실패');
+    if (!currentEditingTransaction?.row) { showToast('삭제할 거래가 없습니다.', true); return; }
+    const { row } = currentEditingTransaction;
+    const key = 'transactions_' + currentCycleMonth;
+    const originalData = JSON.parse(localStorage.getItem(key) || '[]');
+    const filteredData = originalData.filter(t => t?.row?.toString() !== row.toString());
+    localStorage.setItem(key, JSON.stringify(filteredData));
+    renderCalendarAndSummary(filteredData);
+    closeModal();
+    if (String(row).startsWith('temp-')) { showToast('임시 입력을 삭제했습니다.'); return; }
+    showToast('삭제 중...');
+    try {
+        const result = await callAppsScriptApi('deleteTransaction', { id_to_delete: Number(row) });
+        if (result.success) {
+            showToast(result.message || '삭제 완료!', false);
+            await updateCalendarDisplay();
+        } else {
+            throw new Error(result.message || '서버 삭제 실패');
+        }
+    } catch (error) {
+        showToast(`삭제 실패: ${error.message}`, true);
+        localStorage.setItem(key, JSON.stringify(originalData));
+        renderCalendarAndSummary(originalData);
     }
-  } catch (error) {
-    showToast(`삭제 실패! (${error.message})`, true);
-    localStorage.setItem(key, JSON.stringify(originalData)); 
-    renderCalendarAndSummary(originalData);
-  }
 }
 
+
 // ===================================================================
-// ▼▼▼ 2. 여기에 새로운 검색 기능 관련 코드 전체를 추가합니다. ▼▼▼
+// ▼▼▼ 검색 기능 관련 코드 (주기 검색으로 전체 수정) ▼▼▼
 // ===================================================================
 
-// HTML 요소들을 변수로 가져옵니다.
 const searchInput = document.getElementById('searchInput');
 const searchButton = document.getElementById('searchButton');
 const searchResultsContainer = document.getElementById('searchResults');
+const searchStartCycleSelect = document.getElementById('searchStartCycle');
+const searchEndCycleSelect = document.getElementById('searchEndCycle');
 
-// 검색 버튼에 '클릭' 이벤트 리스너를 추가합니다.
+/**
+ * 검색창 옆 주기 선택 드롭다운 메뉴 2개를 채우고 기본값을 설정하는 함수
+ */
+function populateCycleDropdowns() {
+    const cycles = [];
+    const startDate = new Date(2025, 0, 1); // 시작 기준: 2025년 1월
+    const today = new Date();
+
+    // 현재 날짜 기준의 주기월 계산
+    let currentCycleYear = today.getDate() < 18 ? (today.getMonth() === 0 ? today.getFullYear() - 1 : today.getFullYear()) : today.getFullYear();
+    let currentCycleMonthIndex = today.getDate() < 18 ? (today.getMonth() === 0 ? 11 : today.getMonth() - 1) : today.getMonth();
+    
+    let loopDate = new Date(currentCycleYear, currentCycleMonthIndex, 1);
+
+    // 과거 3년치 또는 2025년 1월까지 주기 생성
+    while (loopDate >= startDate && cycles.length < 36) {
+        const year = loopDate.getFullYear();
+        const month = String(loopDate.getMonth() + 1).padStart(2, '0');
+        cycles.push(`${year}-${month}`);
+        loopDate.setMonth(loopDate.getMonth() - 1);
+    }
+
+    searchStartCycleSelect.innerHTML = '';
+    searchEndCycleSelect.innerHTML = '';
+
+    cycles.forEach(cycle => {
+        const startOption = document.createElement('option');
+        startOption.value = cycle;
+        startOption.textContent = cycle;
+        searchStartCycleSelect.appendChild(startOption);
+
+        const endOption = document.createElement('option');
+        endOption.value = cycle;
+        endOption.textContent = cycle;
+        searchEndCycleSelect.appendChild(endOption);
+    });
+
+    // 기본값 설정
+    searchEndCycleSelect.value = currentCycleMonth;
+    const oneYearAgoIndex = Math.min(11, cycles.length - 1);
+    if (oneYearAgoIndex >= 0) {
+        searchStartCycleSelect.value = cycles[oneYearAgoIndex];
+    }
+}
+
+
 if (searchButton) {
     searchButton.addEventListener('click', async () => {
       const searchTerm = searchInput.value.trim();
+      const startCycle = searchStartCycleSelect.value;
+      const endCycle = searchEndCycleSelect.value;
+
+      if (startCycle > endCycle) {
+        showToast('시작 주기는 종료 주기보다 이전이어야 합니다.', true);
+        return;
+      }
       if (searchTerm === '') {
         showToast('검색어를 입력하세요.', true);
         return;
       }
     
-      searchResultsContainer.innerHTML = '<p>검색 중...</p>';
+      searchResultsContainer.innerHTML = '<p style="padding: 10px;">검색 중...</p>';
     
       try {
-        // Code.gs에 추가한 'searchTransactions' 액션을 호출합니다!
-        // callAppsScriptApi 헬퍼 함수를 사용하도록 수정합니다.
-        const results = await callAppsScriptApi('searchTransactions', { term: searchTerm });
+        const results = await callAppsScriptApi('searchTransactions', { 
+            term: searchTerm, 
+            startCycle: startCycle,
+            endCycle: endCycle
+        });
     
         if (results && results.length > 0) {
           displaySearchResults(results);
         } else {
-          searchResultsContainer.innerHTML = '<p>검색 결과가 없습니다.</p>';
+          searchResultsContainer.innerHTML = '<p style="padding: 10px;">검색 결과가 없습니다.</p>';
         }
       } catch (error) {
-        console.error('검색 기능 오류:', error);
-        searchResultsContainer.innerHTML = `<p>검색 중 오류: ${error.message}</p>`;
+        searchResultsContainer.innerHTML = `<p style="padding: 10px;">검색 중 오류: ${error.message}</p>`;
       }
     });
 }
 
-
-/**
- * 검색 결과를 목록 형태로 화면에 보여주는 함수
- * @param {Array} results - Code.gs에서 받아온 거래 내역 객체 배열
- */
 function displaySearchResults(results) {
-  searchResultsContainer.innerHTML = ''; // 기존 결과 초기화
+  searchResultsContainer.innerHTML = '';
   const list = document.createElement('ul');
   list.style.listStyle = 'none';
   list.style.padding = '0';
-
   results.forEach(item => {
     const listItem = document.createElement('li');
+    listItem.style.fontSize = '20px'; 
     listItem.textContent = `[${item.date}] ${item.content} (${Number(item.amount).toLocaleString()}원)`;
-    listItem.style.padding = '8px';
+    listItem.style.padding = '10px';
     listItem.style.borderBottom = '1px solid #eee';
     listItem.style.cursor = 'pointer';
-
-    // 각 결과 항목에 '클릭' 이벤트 리스너를 추가합니다.
     listItem.addEventListener('click', () => {
-      // 클릭하면 해당 거래 내역의 수정 창을 엽니다.
       openTransactionModalForEdit(item);
-      
-      // 수정 창이 열리면 검색 결과는 다시 초기화
       searchResultsContainer.innerHTML = '';
       searchInput.value = '';
     });
@@ -766,21 +612,8 @@ function displaySearchResults(results) {
   searchResultsContainer.appendChild(list);
 }
 
-/**
- * (★수정됨★) 검색 결과 클릭 시, 거래 내역 수정 창을 여는 함수
- * @param {object} transactionData - 수정할 거래 내역 정보
- */
 function openTransactionModalForEdit(transactionData) {
-    console.log("검색 결과로부터 수정할 거래내역:", transactionData);
-    
-    // 1. 폼을 transactionData로 채웁니다.
-    //    이 함수는 이미 카테고리 버그가 해결된 최종 버전입니다.
     populateFormForEdit(transactionData);
-
-    // 2. 일일 거래내역 섹션은 숨기고, 토글 버튼 텍스트를 초기화합니다.
     document.getElementById('dailyTransactions').style.display = 'none'; 
     document.getElementById('toggleDailyTransactions').textContent = '거래 내역 보기';
-
-    // 3. 모달 창을 화면에 표시합니다.
-    document.getElementById('transactionModal').style.display = 'flex';
-}
+    document.getElementById('transactionModal').style.display = 'flex'
