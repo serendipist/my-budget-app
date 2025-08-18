@@ -1,589 +1,741 @@
-// app.js - 최종 수정본 (시트 기반 연도 검색 및 로딩 오류 수정)
+// ===================================================================
+// ▼▼▼ Code.gs 파일 전체를 아래 코드로 교체해주세요. ▼▼▼
+// ===================================================================
 
-const APPS_SCRIPT_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbzjP671pu6MMLKhmTXHwqCu-wci-Y-RM0Sl5TlQO0HmGsyrH83DBj6dsh62LqHIf-YD/exec";
-
-/* === 전역 상태 === */
-let currentDisplayDate = new Date();
-let currentCycleMonth = '';
-let cardPerformanceMonthDate = new Date();
-let expenseCategoriesData = {};
-let paymentMethodsData = [];
-let incomeSourcesData = [];
-let currentEditingTransaction = null;
-
-/* === API 호출 헬퍼 함수 === */
-async function callAppsScriptApi(actionName, params = {}) {
-  const url = new URL(APPS_SCRIPT_API_ENDPOINT);
-  url.searchParams.append('action', actionName);
-  for (const key in params) {
-    url.searchParams.append(key, params[key]);
-  }
-  console.log(`[API] Calling: ${actionName} with params: ${JSON.stringify(params)}`);
-  try {
-    const response = await fetch(url.toString(), { method: 'GET' });
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`서버 응답 오류 (${response.status}): ${errorText}`);
-    }
-    const result = await response.json();
-    if (result.success === false) {
-      throw new Error(result.error || `"${actionName}" API 요청 실패`);
-    }
-    return result.data !== undefined ? result.data : result;
-  } catch (error) {
-    console.error(`[API] Error calling action "${actionName}":`, error);
-    showToast?.(`API 요청 중 오류: ${error.message}`, true);
-    throw error;
-  }
-}
-
-/* === 뷰포트 높이 CSS 변수 갱신 === */
-function setViewportHeightVar(){
-  const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-  document.documentElement.style.setProperty('--vh', `${h}px`);
-}
-['load','resize','orientationchange'].forEach(evt => window.addEventListener(evt, setViewportHeightVar));
-
-function adjustCalendarHeight(){ /* 현재 사용 안 함 */ }
-function afterRender(){ setTimeout(adjustCalendarHeight, 0); }
-['resize','orientationchange'].forEach(evt => {
-  setViewportHeightVar();
-  adjustCalendarHeight();
-});
-
-
-/* === 페이지 로드 순서 (수정됨) === */
-window.onload = async () => {
-  console.log("[App.js] window.onload triggered");
-  setViewportHeightVar();
-  
-  // 1. 가장 먼저 필요한 초기 변수 설정
-  determineInitialCycleMonth();
-  
-  // 2. 이벤트 리스너 설정
-  setupEventListeners();
-  
-  // 3. UI 요소 채우기 (서버 데이터 필요)
-  await populateSearchYearDropdownFromServer();
-
-  const loader = document.getElementById('loader');
-  if(loader) loader.style.display = 'block';
-  try {
-    // 4. 나머지 데이터 로딩 및 화면 그리기
-    await loadInitialData();
-    await updateCalendarDisplay();
-  } catch (error) {
-    console.error("[App.js] Error during initial data loading:", error);
-    showToast?.("초기 데이터 로딩 중 오류가 발생했습니다.", true);
-  } finally {
-    if(loader) loader.style.display = 'none';
-  }
-  showView('calendarView');
-  toggleTypeSpecificFields();
-  document.getElementById('transactionModal')?.style.display = 'none';
-  registerServiceWorker();
+/* ── 0. 전역 상수 ───────────────────────────────── */
+const SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
+const SHEET_NAMES = {
+  TRANSACTIONS       : 'Transactions',
+  EXPENSE_CATEGORIES : 'ExpenseCategories',
+  PAYMENT_METHODS    : 'PaymentMethods',
+  INCOME_SOURCES     : 'IncomeSources',
 };
 
-function registerServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js', { scope: './' })
-      .then(reg => console.log('[SW] 등록 성공:', reg.scope))
-      .catch(err => console.error('[SW] 등록 실패:', err));
+const COL_INDICES = { 
+  TIMESTAMP: 1,      // A열 - 입력 타임스탬프
+  DATE: 2,           // B열 - 거래 날짜
+  TYPE: 3,           // C열 - 유형 (수입/지출)
+  AMOUNT: 4,         // D열 - 금액
+  CONTENT: 5,        // E열 - 내용
+  PAYMENT_METHOD: 6, // F열 - 결제수단 (지출 시)
+  CATEGORY1: 7,      // G열 - 주 카테고리 (지출) 또는 수입원 (수입)
+  CATEGORY2: 8,      // H열 - 하위 카테고리 (지출 시)
+  CYCLE_MONTH: 9     // I열 - 주기월
+};
+const MAX_COLS_TRANSACTIONS = Math.max(...Object.values(COL_INDICES));
+
+/* ── 1. 시트 및 캐시 헬퍼 ────────────────── */
+let _ss;
+const _sheetCache = {};
+
+function getSS() {
+  return _ss || (_ss = SpreadsheetApp.getActiveSpreadsheet());
+}
+
+function getSheet(name) {
+  if (!_sheetCache[name]) {
+    const sheet = getSS().getSheetByName(name);
+    if (!sheet) throw new Error(`시트 '${name}'를 찾을 수 없습니다.`);
+    _sheetCache[name] = sheet;
   }
+  return _sheetCache[name];
 }
 
-/* === 주기 계산 & 달력 === */
-function determineInitialCycleMonth(){
-  const today = new Date();
-  let year = today.getFullYear();
-  let mIdx = today.getDate() < 18 ? today.getMonth() - 1 : today.getMonth();
-  if(mIdx < 0){ mIdx = 11; year -= 1; }
-  currentDisplayDate = new Date(year, mIdx, 18);
-  currentCycleMonth = `${year}-${String(mIdx + 1).padStart(2,'0')}`;
-}
-
-async function changeMonth(delta){
-  currentDisplayDate.setMonth(currentDisplayDate.getMonth() + delta);
-  const y = currentDisplayDate.getFullYear();
-  const m = currentDisplayDate.getMonth();
-  currentCycleMonth = `${y}-${String(m + 1).padStart(2,'0')}`;
-  await updateCalendarDisplay();
-}
-
-async function updateCalendarDisplay () {
-  const loader = document.getElementById('loader');
-  if (loader) loader.style.display = 'block';
-  const cacheKey = 'transactions_' + currentCycleMonth;
-  const cachedDataString = localStorage.getItem(cacheKey);
-  let renderedFromCache = false;
-  let transactionsToRender = [];
-  if (cachedDataString) {
-    try {
-      const cachedArr = JSON.parse(cachedDataString);
-      if (Array.isArray(cachedArr)) {
-        transactionsToRender = cachedArr;
-        renderCalendarAndSummary(cachedArr);
-        renderedFromCache = true;
-      } else { localStorage.removeItem(cacheKey); }
-    } catch (err) { localStorage.removeItem(cacheKey); }
+function getCached(key, supplierFn, ttlSec = 3600) {
+  const cache = CacheService.getScriptCache();
+  const hit = cache.get(key);
+  
+  if (hit) {
+    try { 
+      return JSON.parse(hit); 
+    } catch (e) { 
+      Logger.log(`캐시 파싱 오류: ${e.message}`);
+    }
   }
-  if (!renderedFromCache) { renderCalendarAndSummary([]); }
+  
+  const fresh = supplierFn();
+  if (fresh !== undefined && fresh !== null && !fresh.error) {
+    try { 
+      cache.put(key, JSON.stringify(fresh), ttlSec); 
+    } catch (e) { 
+      Logger.log(`캐시 저장 오류: ${e.message}`);
+    }
+  }
+  return fresh;
+}
+
+function getParameter(e, name) {
+  return e?.parameter?.[name] ?? undefined;
+}
+
+/* ── 2. API 요청 처리 doGet(e) 함수 ───────────────── */
+function doGet(e) {
+  Logger.log(`API Request Received: ${e.queryString || ""}`);
+  const githubOrigin = 'https://serendipist.github.io';
+  let responseData;
+
   try {
-    const latest = await callAppsScriptApi('getTransactions', { cycleMonth: currentCycleMonth });
-    const finalTx = (latest && Array.isArray(latest)) ? latest : [];
-    localStorage.setItem(cacheKey, JSON.stringify(finalTx));
-    if (!renderedFromCache || JSON.stringify(transactionsToRender) !== JSON.stringify(finalTx)) {
-      renderCalendarAndSummary(finalTx);
-      if (renderedFromCache) showToast?.('달력 정보가 업데이트 되었습니다.', false);
-    }
-  } catch (err) {
-    console.error('[App.js] getTransactions failed', err);
-    if (!renderedFromCache) renderCalendarAndSummary([]);
-  } finally {
-    if (loader) loader.style.display = 'none';
-  }
-}
+    const action = getParameter(e, 'action');
+    if (!action) throw new Error("Action 파라미터가 필요합니다.");
 
-function renderCalendarAndSummary(transactions){
-  const [year, month] = currentCycleMonth.split('-').map(Number);
-  document.getElementById('currentMonthYear').textContent = `${year}년 ${String(month).padStart(2,'0')}월 주기`;
-  renderCalendar(year, month, transactions);
-  updateSummary(transactions);
-}
-
-function renderCalendar(year, monthOneBased, transactions) {
-  const calendarBody = document.getElementById('calendarBody');
-  calendarBody.innerHTML = '';
-  const transMap = {};
-  (transactions||[]).forEach(t=>{ if(t && t.date){ (transMap[t.date]=transMap[t.date]||[]).push(t); } });
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  const cycleStart = new Date(year, monthOneBased-1, 18);
-  const cycleEnd   = new Date(year, monthOneBased,   17);
-  let cur = new Date(cycleStart);
-  let weekRow = document.createElement('tr');
-  const frag = document.createDocumentFragment();
-  for(let i=0;i<cycleStart.getDay();i++){ const td=document.createElement('td'); td.className='other-month'; weekRow.appendChild(td); }
-  while(cur<=cycleEnd){
-    const td = document.createElement('td');
-    const dStr = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
-    if (dStr === todayStr) { td.classList.add('today'); }
-    td.dataset.date=dStr;
-    td.onclick=()=>openModal(dStr);
-    const num = document.createElement('span');
-    num.className='date-number';
-    num.textContent=cur.getDate();
-    td.appendChild(num);
-    const wrap=document.createElement('div');
-    wrap.className='txn-wrap';
-    const list = transMap[dStr]||[];
-    list.slice(0,4).forEach(t=>{
-      const div=document.createElement('div');
-      div.className=`txn-item ${t.type==='수입'?'income':'expense'}`;
-      div.textContent=`${Number(t.amount).toLocaleString()}원`;
-      wrap.appendChild(div);
-    });
-    if(list.length>4){
-      const more=document.createElement('div');
-      more.className='more-link';
-      more.textContent=`+${list.length-4}`;
-      more.onclick=e=>{ e.stopPropagation(); openModal(dStr);}
-      wrap.appendChild(more);
+    switch (action) {
+      case 'getAppSetupData':
+        responseData = getAppSetupData(getParameter(e, 'initialCycleMonth'));
+        break;
+      case 'getTransactions':
+        responseData = getTransactions(getParameter(e, 'cycleMonth'));
+        break;
+      case 'getTransactionsByDate':
+        responseData = getTransactionsByDate(getParameter(e, 'date'));
+        break;
+      case 'getCardData':
+        responseData = getCardData(
+          getParameter(e, 'cardName'), 
+          getParameter(e, 'cycleMonthForBilling'), 
+          getParameter(e, 'performanceReferenceMonth')
+        );
+        break;
+      case 'getExistingYears':
+        responseData = getExistingYears();
+        break;
+      case 'searchTransactions':
+        responseData = searchTransactions(getParameter(e, 'term'), getParameter(e, 'year'));
+        break;
+      case 'addTransaction':
+      case 'updateTransaction':
+        const dataStr = getParameter(e, 'transactionDataString');
+        if (!dataStr) throw new Error("transactionDataString 파라미터가 필요합니다.");
+        const transactionData = JSON.parse(dataStr);
+        responseData = (action === 'addTransaction') ? 
+          addTransaction(transactionData) : 
+          updateTransaction(transactionData);
+        break;
+      case 'deleteTransaction':
+        const rowIdStr = getParameter(e, 'id_to_delete');
+        if (!rowIdStr) throw new Error("id_to_delete 파라미터가 필요합니다.");
+        responseData = deleteTransaction(Number(rowIdStr));
+        break;
+      default:
+        throw new Error(`지원되지 않는 작업입니다: ${action}`);
     }
-    td.appendChild(wrap);
-    weekRow.appendChild(td);
-    if(cur.getDay()===6 || cur.getTime()===cycleEnd.getTime()){
-      if(cur.getTime()===cycleEnd.getTime() && cur.getDay()!==6){
-        for(let i=cur.getDay()+1;i<=6;i++){ const empty=document.createElement('td'); empty.className='other-month'; weekRow.appendChild(empty); }
-      }
-      frag.appendChild(weekRow);
-      if(cur.getTime()!==cycleEnd.getTime()) weekRow=document.createElement('tr');
-    }
-    cur.setDate(cur.getDate()+1);
-  }
-  calendarBody.appendChild(frag);
-  if(typeof afterRender==='function') afterRender();
-}
 
-function updateSummary(transactions){
-  let inc = 0, exp = 0;
-  (transactions||[]).forEach(t => { if (t && typeof t.amount !== 'undefined') { const a = Number(t.amount)||0; if (t.type==='수입') inc += a; else exp += a; } });
-  const bal = inc - exp;
-  document.getElementById('totalIncome').textContent = `₩${inc.toLocaleString()}`;
-  document.getElementById('totalExpense').textContent = `₩${exp.toLocaleString()}`;
-  const balEl = document.getElementById('totalBalance');
-  balEl.textContent = `₩${bal.toLocaleString()}`; balEl.className = 'total-balance';
-  if (bal < 0) balEl.classList.add('negative');
-}
-
-async function loadInitialData() {
-  try {
-    const setupData = await callAppsScriptApi('getAppSetupData', { initialCycleMonth: currentCycleMonth });
-    expenseCategoriesData = setupData.expenseCategories || {};
-    paymentMethodsData    = setupData.paymentMethods    || [];
-    incomeSourcesData     = setupData.incomeSources     || [];
-    if (setupData.initialTransactions) {
-      localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(setupData.initialTransactions));
+    if (responseData && responseData.success === false) {
+      throw new Error(responseData.error || '내부 작업 실패');
     }
-    populateFormDropdowns();
-    populateCardSelector();
+
   } catch (error) {
-    console.error('loadInitialData API call failed:', error);
+    Logger.log(`Error in doGet: ${error.message} (Action: ${getParameter(e, 'action')})`);
+    responseData = { success: false, error: error.message };
+  }
+
+  return ContentService.createTextOutput(JSON.stringify(responseData))
+    .setMimeType(ContentService.MimeType.JSON)
+    .setHeader('Access-Control-Allow-Origin', githubOrigin);
+}
+
+/* ── 3. 날짜 및 포맷 유틸리티 함수들 ─────────────────── */
+function formatDate(val) {
+  if (!val) return '';
+  
+  if (val instanceof Date) {
+    return Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  
+  // 문자열인 경우 날짜 형식으로 변환
+  const dateStr = String(val).substring(0, 10).replace(/[./]/g, '-');
+  return dateStr;
+}
+
+function formatCycleMonth(val) {
+  if (!val) return '';
+  
+  if (val instanceof Date) {
+    return Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM');
+  }
+  
+  // 문자열에서 연도-월 추출
+  const match = String(val).match(/^(\d{4})[.\-/ ]?(\d{1,2})/);
+  if (match) {
+    return `${match[1]}-${String(match).padStart(2, '0')}`;
+  }
+  
+  return '';
+}
+
+/* ── 4. 데이터 조회 함수들 ─────────────────── */
+function getExistingYears() {
+  try {
+    const sheet = getSheet(SHEET_NAMES.TRANSACTIONS);
+    const lastRow = sheet.getLastRow();
+    
+    if (lastRow < 2) {
+      return { success: true, data: [] };
+    }
+    
+    const cycleMonthColumn = sheet.getRange(2, COL_INDICES.CYCLE_MONTH, lastRow - 1, 1).getValues();
+    
+    const yearSet = new Set();
+    cycleMonthColumn.forEach(row => {
+      const cycleMonth = row[0];
+      if (cycleMonth && String(cycleMonth).length >= 4) {
+        yearSet.add(String(cycleMonth).substring(0, 4));
+      }
+    });
+    
+    const years = Array.from(yearSet).sort((a, b) => b.localeCompare(a));
+    
+    Logger.log(`Found existing years: ${years.join(', ')}`);
+    return { success: true, data: years };
+    
+  } catch (err) {
+    Logger.log(`[Code.gs] getExistingYears 오류: ${err.message}`);
+    return { success: false, error: '연도 목록을 불러오는 중 오류가 발생했습니다.' };
   }
 }
 
-function setupEventListeners() {
-  document.getElementById('transactionForm').addEventListener('submit', handleTransactionSubmit);
-  document.getElementById('mainCategory').addEventListener('change', updateSubCategories);
-  setupSwipeListeners();
-}
-
-function setupSwipeListeners() {
-    const calendarElement = document.getElementById('calendarView');
-    if (!calendarElement) return;
-    let touchstartX = 0, touchendX = 0, touchstartY = 0, touchendY = 0;
-    const SWIPE_THRESHOLD = 50, SWIPE_MAX_VERTICAL = 75;
-    calendarElement.addEventListener('touchstart', e => { touchstartX = e.changedTouches[0].screenX; touchstartY = e.changedTouches[0].screenY; }, { passive: true });
-    calendarElement.addEventListener('touchend', async e => {
-        touchendX = e.changedTouches[0].screenX;
-        touchendY = e.changedTouches[0].screenY;
-        const deltaX = touchendX - touchstartX, deltaY = touchendY - touchstartY;
-        if (Math.abs(deltaX) > SWIPE_THRESHOLD && Math.abs(deltaY) < SWIPE_MAX_VERTICAL) {
-            await changeMonth(deltaX > 0 ? -1 : 1);
-        }
-    });
-}
-
-function toggleTypeSpecificFields() {
-    const type = document.querySelector('input[name="type"]:checked')?.value || '지출';
-    document.getElementById('expenseSpecificFields').style.display = type === '지출' ? 'block' : 'none';
-    document.getElementById('incomeSpecificFields').style.display = type === '수입' ? 'block' : 'none';
-}
-
-function populateFormDropdowns() {
-    const pm = document.getElementById('paymentMethod');
-    pm.innerHTML = '<option value="">선택</option>';
-    (paymentMethodsData||[]).forEach(m=>{ const o=document.createElement('option'); o.value=m.name; o.textContent=m.name; pm.appendChild(o); });
-    const mainSel = document.getElementById('mainCategory');
-    mainSel.innerHTML = '<option value="">선택</option>';
-    for (const k in expenseCategoriesData) { const o=document.createElement('option'); o.value=k; o.textContent=k; mainSel.appendChild(o); }
-    updateSubCategories();
-    const incSel = document.getElementById('incomeSource');
-    incSel.innerHTML='<option value="">선택</option>';
-    (incomeSourcesData||[]).forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; incSel.appendChild(o); });
-}
-
-function updateSubCategories() {
-    const mainSel = document.getElementById('mainCategory'), subSel = document.getElementById('subCategory'), mainVal = mainSel.value;
-    subSel.innerHTML = '<option value="">선택</option>';
-    if (expenseCategoriesData?.[mainVal]?.length) {
-        expenseCategoriesData[mainVal].forEach(sub => { const o=document.createElement('option'); o.value=sub; o.textContent=sub; subSel.appendChild(o); });
+function searchTransactions(searchTerm, targetYear) {
+  try {
+    if (!searchTerm || !targetYear) {
+      throw new Error("검색어와 연도 값은 필수입니다.");
     }
-}
 
-async function handleTransactionSubmit(e) {
-    e.preventDefault();
-    const fd = new FormData(e.target), data = {};
-    fd.forEach((v, k) => data[k] = v);
-    if (!validateTransactionData(data)) return;
-    const isEditing = !!currentEditingTransaction?.row;
-    const key = 'transactions_' + currentCycleMonth;
-    const originalData = JSON.parse(localStorage.getItem(key) || '[]');
-    let optimisticData = JSON.parse(JSON.stringify(originalData));
-    const itemForServer = { ...data };
-    if (isEditing) {
-        const index = optimisticData.findIndex(t => t?.row?.toString() === currentEditingTransaction.row.toString());
-        if (index > -1) {
-            itemForServer.id_to_update = currentEditingTransaction.row;
-            optimisticData[index] = { ...optimisticData[index], ...data, category1: data.type === '수입' ? data.incomeSource : data.mainCategory, category2: data.type === '수입' ? '' : data.subCategory };
-        }
-    } else {
-        optimisticData.push({ ...data, row: `temp-${Date.now()}`, category1: data.type === '수입' ? data.incomeSource : data.mainCategory, category2: data.type === '수입' ? '' : data.subCategory });
-    }
-    localStorage.setItem(key, JSON.stringify(optimisticData));
-    renderCalendarAndSummary(optimisticData);
-    showToast(isEditing ? '수정 중...' : '저장 중...');
-    closeModal();
-    try {
-        const result = await callAppsScriptApi(isEditing ? 'updateTransaction' : 'addTransaction', { transactionDataString: JSON.stringify(itemForServer) });
-        if (result.success) {
-            showToast(result.message || '완료!', false);
-            await updateCalendarDisplay();
-        } else {
-            throw new Error(result.message || '서버 처리 실패');
-        }
-    } catch (error) {
-        showToast(`실패: ${error.message}`, true);
-        localStorage.setItem(key, JSON.stringify(originalData));
-        renderCalendarAndSummary(originalData);
-    }
-}
-
-function validateTransactionData(data) {
-    if (!data.date || !data.amount || !data.content) { showToast("날짜, 금액, 내용은 필수입니다.", true); return false; }
-    if (data.type === '지출' && (!data.paymentMethod || !data.mainCategory)) { showToast("지출 시 결제수단과 주 카테고리는 필수입니다.", true); return false; }
-    if (data.type === '수입' && !data.incomeSource) { showToast("수입 시 수입원은 필수입니다.", true); return false; }
-    return true;
-}
-
-async function openModal(dateStr) {
-    document.getElementById('transactionForm').reset();
-    currentEditingTransaction = null;
-    document.getElementById('deleteBtn').style.display = 'none';
-    document.getElementById('modalTitle').textContent = '거래 추가';
-    document.getElementById('transactionDate').value = dateStr;
-    toggleTypeSpecificFields();
-    document.getElementById('dailyTransactionList').innerHTML = '불러오는 중...';
-    document.getElementById('dailyTransactions').style.display = 'none';
-    document.getElementById('toggleDailyTransactions').textContent = '거래 내역 보기';
-    document.getElementById('transactionModal').style.display = 'flex';
-    await loadDailyTransactions(dateStr);
-}
-
-function closeModal(){
-    document.getElementById('transactionModal').style.display='none';
-}
-
-function toggleDailyTransactionVisibility() {
-    const dailySection = document.getElementById('dailyTransactions');
-    const toggleBtn = document.getElementById('toggleDailyTransactions');
-    const isHidden = dailySection.style.display === 'none';
-    dailySection.style.display = isHidden ? 'block' : 'none';
-    toggleBtn.textContent = isHidden ? '거래 내역 숨기기' : '거래 내역 보기';
-    if (!isHidden) {
-        const date = document.getElementById('transactionDate').value;
-        document.getElementById('transactionForm').reset();
-        document.getElementById('transactionDate').value = date;
-        document.getElementById('modalTitle').textContent = '거래 추가';
-        document.getElementById('deleteBtn').style.display = 'none';
-        currentEditingTransaction = null;
-        toggleTypeSpecificFields();
-    }
-}
-
-async function loadDailyTransactions(dateStr) {
-    const list = document.getElementById('dailyTransactionList');
-    list.textContent = '불러오는 중...';
-    try {
-        const dailyData = await callAppsScriptApi('getTransactionsByDate', { date: dateStr });
-        displayDailyTransactions(dailyData || []);
-    } catch (error) {
-        list.textContent = '일일 내역 로딩 실패.';
-    }
-}
-
-function displayDailyTransactions(arr) {
-    const list = document.getElementById('dailyTransactionList');
-    if (!Array.isArray(arr) || arr.length === 0) {
-        list.textContent = '해당 날짜의 거래 내역이 없습니다.';
-        return;
-    }
-    list.innerHTML = '';
-    arr.forEach(t => {
-        const d = document.createElement('div');
-        d.className = `transaction-item ${t.type === '수입' ? 'income' : 'expense'}`;
-        let txt = `[${t.type}] ${t.content}: ${Number(t.amount).toLocaleString()}원`;
-        if (t.type === '지출') {
-            txt += ` (${t.paymentMethod || ''} - ${t.category1 || ''}${t.category2 ? '/' + t.category2 : ''})`;
-        } else {
-            txt += ` (${t.category1 || ''})`;
-        }
-        d.style.cursor = 'pointer';
-        d.textContent = txt;
-        d.onclick = () => populateFormForEdit(t);
-        list.appendChild(d);
-    });
-}
-
-function populateFormForEdit(transaction) {
-    if (!transaction?.row) { showToast('유효하지 않은 거래 데이터입니다.', true); return; }
-    currentEditingTransaction = transaction;
-    document.getElementById('transactionForm').reset();
-    document.getElementById('modalTitle').textContent = '거래 수정';
-    document.getElementById('transactionDate').value = transaction.date;
-    document.getElementById('transactionAmount').value = transaction.amount;
-    document.getElementById('transactionContent').value = transaction.content;
-    document.querySelectorAll('input[name="type"]').forEach(r => r.checked = r.value === transaction.type);
-    toggleTypeSpecificFields();
-    if (transaction.type === '지출') {
-        document.getElementById('paymentMethod').value = transaction.paymentMethod;
-        document.getElementById('mainCategory').value = transaction.category1;
-        updateSubCategories();
-        document.getElementById('subCategory').value = transaction.category2;
-    } else {
-        document.getElementById('incomeSource').value = transaction.category1;
-    }
-    document.getElementById('deleteBtn').style.display = 'block';
-}
-
-function showView(id){
-    document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-    document.querySelectorAll('.tab-button').forEach(b=>b.classList.remove('active'));
-    document.querySelector(`.tab-button[onclick="showView('${id}')"]`).classList.add('active');
-    if(id==='cardView'){
-        cardPerformanceMonthDate = new Date();
-        displayCardData();
-    }
-}
-
-function showToast(msg, isErr = false) {
-    const t = document.getElementById('toast');
-    if (!t) return;
-    t.textContent = msg;
-    t.className = `show ${isErr ? 'error' : 'success'}`;
-    setTimeout(() => {
-        t.className = t.className.replace("show", "");
-    }, 3000);
-}
-
-function populateCardSelector(){
-    const sel = document.getElementById('cardSelector');
-    const currentCard = sel.value;
-    sel.innerHTML='<option value="">카드 선택</option>';
-    (paymentMethodsData||[]).filter(m=>m.isCard).forEach(c=>{ const o=document.createElement('option'); o.value=c.name; o.textContent=c.name; sel.appendChild(o); });
-    if (currentCard) sel.value = currentCard;
-}
-
-async function changeCardMonth(d){
-    cardPerformanceMonthDate.setMonth(cardPerformanceMonthDate.getMonth()+d);
-    await displayCardData();
-}
-
-async function displayCardData() {
-    const cardSel = document.getElementById('cardSelector'), det = document.getElementById('cardDetails'), lbl = document.getElementById('cardMonthLabel'), loader = document.getElementById('loader');
-    const card = cardSel.value;
-    if (!card){ det.innerHTML = '<p>카드를 선택해주세요.</p>'; lbl.textContent = ''; return; }
-    if(loader) loader.style.display = 'block';
-    const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
-    lbl.textContent = `${perfMonth} 기준`;
-    try {
-        const d = await callAppsScriptApi('getCardData', { cardName: card, cycleMonthForBilling: perfMonth, performanceReferenceMonth: perfMonth });
-        const rate = d.performanceTarget > 0 ? ((d.performanceAmount/d.performanceTarget)*100).toFixed(1)+'%' : '0%';
-        det.innerHTML = `<h4>${d.cardName}</h4><p><strong>청구 예정:</strong> ${Number(d.billingAmount).toLocaleString()}원</p><p><strong>현재 실적:</strong> ${Number(d.performanceAmount).toLocaleString()}원 / ${Number(d.performanceTarget).toLocaleString()}원 (${rate})</p>`;
-    } catch (error) {
-        det.innerHTML = '<p>데이터 로딩 실패.</p>';
-    } finally {
-        if(loader) loader.style.display = 'none';
-    }
-}
-
-async function handleDelete() {
-    if (!currentEditingTransaction?.row) { showToast('삭제할 거래가 없습니다.', true); return; }
-    const { row } = currentEditingTransaction;
-    const key = 'transactions_' + currentCycleMonth;
-    const originalData = JSON.parse(localStorage.getItem(key) || '[]');
-    const filteredData = originalData.filter(t => t?.row?.toString() !== row.toString());
-    localStorage.setItem(key, JSON.stringify(filteredData));
-    renderCalendarAndSummary(filteredData);
-    closeModal();
-    if (String(row).startsWith('temp-')) { showToast('임시 입력을 삭제했습니다.'); return; }
-    showToast('삭제 중...');
-    try {
-        const result = await callAppsScriptApi('deleteTransaction', { id_to_delete: Number(row) });
-        if (result.success) {
-            showToast(result.message || '삭제 완료!', false);
-            await updateCalendarDisplay();
-        } else {
-            throw new Error(result.message || '서버 삭제 실패');
-        }
-    } catch (error) {
-        showToast(`삭제 실패: ${error.message}`, true);
-        localStorage.setItem(key, JSON.stringify(originalData));
-        renderCalendarAndSummary(originalData);
-    }
-}
-
-
-// ===================================================================
-// ▼▼▼ 검색 기능 관련 코드 (시트 기반 연도 검색으로 수정) ▼▼▼
-// ===================================================================
-
-const searchInput = document.getElementById('searchInput');
-const searchButton = document.getElementById('searchButton');
-const searchResultsContainer = document.getElementById('searchResults');
-const searchYearSelect = document.getElementById('searchYear');
-
-/**
- * 서버에서 연도 목록을 가져와 드롭다운 메뉴를 채우는 함수 (수정됨)
- */
-async function populateSearchYearDropdownFromServer() {
-    const searchYearSelect = document.getElementById('searchYear');
-    if (!searchYearSelect) return;
+    const sheet = getSheet(SHEET_NAMES.TRANSACTIONS);
+    const lastRow = sheet.getLastRow();
     
-    searchYearSelect.innerHTML = '<option value="all">전체</option>'; // 기본 옵션
-
-    try {
-        const years = await callAppsScriptApi('getExistingYears');
-        if (years && Array.isArray(years)) {
-            years.forEach(year => {
-                const option = document.createElement('option');
-                option.value = year;
-                option.textContent = `${year}년`;
-                searchYearSelect.appendChild(option);
-            });
-        }
-    } catch (error) {
-        console.error("연도 목록을 불러오는 데 실패했습니다:", error);
-        showToast("검색 연도 목록 로딩 실패", true);
+    if (lastRow < 2) {
+      return { success: true, data: [] };
     }
-}
 
-
-if (searchButton) {
-    searchButton.addEventListener('click', async () => {
-      const searchTerm = searchInput.value.trim();
-      const selectedYear = searchYearSelect.value;
-
-      if (searchTerm === '') {
-        showToast('검색어를 입력하세요.', true);
-        return;
-      }
+    const allData = sheet.getRange(2, 1, lastRow - 1, MAX_COLS_TRANSACTIONS).getValues();
+    const results = [];
     
-      searchResultsContainer.innerHTML = '<p style="padding: 10px;">검색 중...</p>';
-    
-      try {
-        const results = await callAppsScriptApi('searchTransactions', { 
-            term: searchTerm, 
-            year: selectedYear 
+    allData.forEach((row, index) => {
+      const content = String(row[COL_INDICES.CONTENT - 1]);
+      const cycleMonth = formatCycleMonth(row[COL_INDICES.CYCLE_MONTH - 1]);
+      
+      // 연도 매칭 검사
+      const yearMatch = (targetYear === 'all') || (cycleMonth && cycleMonth.startsWith(targetYear));
+      
+      // 내용에 검색어 포함 검사
+      const contentMatch = content.includes(searchTerm);
+      
+      if (yearMatch && contentMatch) {
+        results.push({
+          row: index + 2,
+          date: formatDate(row[COL_INDICES.DATE - 1]),
+          type: String(row[COL_INDICES.TYPE - 1]),
+          amount: Number(row[COL_INDICES.AMOUNT - 1]) || 0,
+          content: content,
+          paymentMethod: String(row[COL_INDICES.PAYMENT_METHOD - 1] || ''),
+          category1: String(row[COL_INDICES.CATEGORY1 - 1] || ''),
+          category2: String(row[COL_INDICES.CATEGORY2 - 1] || ''),
+          cycleMonth: cycleMonth
         });
-    
-        if (results && results.length > 0) {
-          displaySearchResults(results);
-        } else {
-          searchResultsContainer.innerHTML = '<p style="padding: 10px;">검색 결과가 없습니다.</p>';
-        }
-      } catch (error) {
-        searchResultsContainer.innerHTML = `<p style="padding: 10px;">검색 중 오류: ${error.message}</p>`;
       }
     });
+
+    // 날짜 역순으로 정렬
+    results.sort((a, b) => b.date.localeCompare(a.date));
+    
+    return { success: true, data: results };
+    
+  } catch (err) {
+    Logger.log(`[Code.gs] searchTransactions 오류: ${err.message}`);
+    return { success: false, error: '거래 내역 검색 중 오류가 발생했습니다.' };
+  }
 }
 
-function displaySearchResults(results) {
-  searchResultsContainer.innerHTML = '';
-  const list = document.createElement('ul');
-  list.style.listStyle = 'none';
-  list.style.padding = '0';
-  results.forEach(item => {
-    const listItem = document.createElement('li');
-    listItem.style.fontSize = '20px'; 
-    listItem.textContent = `[${item.date}] ${item.content} (${Number(item.amount).toLocaleString()}원)`;
-    listItem.style.padding = '10px';
-    listItem.style.borderBottom = '1px solid #eee';
-    listItem.style.cursor = 'pointer';
-    listItem.addEventListener('click', () => {
-      openTransactionModalForEdit(item);
-      searchResultsContainer.innerHTML = '';
-      searchInput.value = '';
+function getTransactions(cycleMonth) {
+  const cacheKey = 'trans_' + cycleMonth;
+  
+  return getCached(cacheKey, () => {
+    try {
+      const sheet = getSheet(SHEET_NAMES.TRANSACTIONS);
+      const lastRow = sheet.getLastRow();
+      
+      if (lastRow < 2) {
+        return { success: true, data: [] };
+      }
+
+      const rows = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+      const transactionList = [];
+      
+      rows.forEach((row, index) => {
+        const rowCycleMonth = formatCycleMonth(row[COL_INDICES.CYCLE_MONTH - 1]);
+        
+        if (rowCycleMonth === cycleMonth) {
+          transactionList.push({
+            row: index + 2,
+            date: formatDate(row[COL_INDICES.DATE - 1]),
+            type: String(row[COL_INDICES.TYPE - 1]),
+            amount: Number(row[COL_INDICES.AMOUNT - 1]) || 0,
+            content: String(row[COL_INDICES.CONTENT - 1]),
+            paymentMethod: String(row[COL_INDICES.PAYMENT_METHOD - 1] || ''),
+            category1: String(row[COL_INDICES.CATEGORY1 - 1] || ''),
+            category2: String(row[COL_INDICES.CATEGORY2 - 1] || ''),
+            cycleMonth: cycleMonth
+          });
+        }
+      });
+      
+      return { success: true, data: transactionList };
+      
+    } catch (err) {
+      Logger.log(`getTransactions 오류: ${err.message}`);
+      return { success: false, error: '거래 내역 조회 중 오류가 발생했습니다.' };
+    }
+  }, 21600); // 6시간 캐시
+}
+
+function getTransactionsByDate(dateStr) {
+  try {
+    // 날짜 형식 검증
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      throw new Error(`잘못된 date 형식: ${dateStr}`);
+    }
+
+    const sheet = getSheet(SHEET_NAMES.TRANSACTIONS);
+    const lastRow = sheet.getLastRow();
+    
+    if (lastRow < 2) {
+      return { success: true, data: [] };
+    }
+
+    const allValues = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+    const transactions = [];
+    
+    allValues.forEach((row, index) => {
+      const rowDate = formatDate(row[COL_INDICES.DATE - 1]);
+      
+      if (rowDate === dateStr) {
+        transactions.push({
+          row: index + 2,
+          date: dateStr,
+          type: String(row[COL_INDICES.TYPE - 1]),
+          amount: Number(row[COL_INDICES.AMOUNT - 1]) || 0,
+          content: String(row[COL_INDICES.CONTENT - 1]),
+          paymentMethod: String(row[COL_INDICES.PAYMENT_METHOD - 1] || ''),
+          category1: String(row[COL_INDICES.CATEGORY1 - 1] || ''),
+          category2: String(row[COL_INDICES.CATEGORY2 - 1] || '')
+        });
+      }
     });
-    list.appendChild(listItem);
-  });
-  searchResultsContainer.appendChild(list);
+
+    return { success: true, data: transactions };
+    
+  } catch (err) {
+    Logger.log(`getTransactionsByDate 오류: ${err.stack}`);
+    return { success: false, error: '일일 거래 조회 중 오류' };
+  }
 }
 
-function openTransactionModalForEdit(transactionData) {
-    populateFormForEdit(transactionData);
-    document.getElementById('dailyTransactions').style.display = 'none'; 
-    document.getElementById('toggleDailyTransactions').textContent = '거래 내역 보기';
-    document.getElementById('transactionModal').style.display = 'flex';
+/* ── 5. 거래 데이터 CUD 함수들 ─────────────────── */
+function addTransaction(transactionData) {
+  try {
+    const sheet = getSheet(SHEET_NAMES.TRANSACTIONS);
+    
+    // 날짜 파싱 및 주기월 계산
+    const [year, month, day] = String(transactionData.date).split('-').map(Number);
+    const dateObj = new Date(year, month - 1, day);
+    
+    // 18일 기준으로 주기월 결정
+    const cycleMonthDate = new Date(
+      dateObj.getFullYear(), 
+      dateObj.getMonth() + (day < 18 ? -1 : 0), 
+      1
+    );
+    const cycleMonth = Utilities.formatDate(cycleMonthDate, Session.getScriptTimeZone(), 'yyyy-MM');
+    
+    // 지출/수입 여부 확인
+    const isExpense = transactionData.type === '지출';
+    
+    // 새 행 데이터 구성
+    const newRow = new Array(MAX_COLS_TRANSACTIONS).fill(null);
+    newRow[COL_INDICES.TIMESTAMP - 1] = new Date();
+    newRow[COL_INDICES.DATE - 1] = transactionData.date;
+    newRow[COL_INDICES.TYPE - 1] = transactionData.type;
+    newRow[COL_INDICES.AMOUNT - 1] = Number(transactionData.amount) || 0;
+    newRow[COL_INDICES.CONTENT - 1] = transactionData.content;
+    newRow[COL_INDICES.PAYMENT_METHOD - 1] = isExpense ? (transactionData.paymentMethod || '') : null;
+    newRow[COL_INDICES.CATEGORY1 - 1] = isExpense ? 
+      (transactionData.mainCategory ?? '') : 
+      (transactionData.incomeSource ?? '');
+    newRow[COL_INDICES.CATEGORY2 - 1] = isExpense ? (transactionData.subCategory ?? '') : '';
+    newRow[COL_INDICES.CYCLE_MONTH - 1] = cycleMonth;
+    
+    // 시트에 추가
+    sheet.appendRow(newRow);
+    SpreadsheetApp.flush();
+    
+    // 캐시 무효화
+    CacheService.getScriptCache().remove('trans_' + cycleMonth);
+    
+    return { 
+      success: true, 
+      message: '거래가 추가되었습니다.',
+      newRowId: sheet.getLastRow()
+    };
+    
+  } catch (err) {
+    Logger.log(`addTransaction 오류: ${err.stack}`);
+    return { 
+      success: false, 
+      message: `거래 추가 중 오류: ${err.message}` 
+    };
+  }
+}
+
+function updateTransaction(data) {
+  try {
+    const sheet = getSheet(SHEET_NAMES.TRANSACTIONS);
+    const rowIndex = data.id_to_update;
+    
+    if (!rowIndex || rowIndex <= 1) {
+      throw new Error('유효하지 않은 행 번호입니다.');
+    }
+
+    // 기존 주기월 가져오기 (캐시 무효화용)
+    const previousCycleMonth = formatCycleMonth(
+      sheet.getRange(rowIndex, COL_INDICES.CYCLE_MONTH).getValue()
+    );
+    
+    // 새 날짜 파싱 및 주기월 계산
+    const [year, month, day] = String(data.date).split('-').map(Number);
+    const dateObj = new Date(year, month - 1, day);
+    const newCycleMonthDate = new Date(
+      dateObj.getFullYear(), 
+      dateObj.getMonth() + (day < 18 ? -1 : 0), 
+      1
+    );
+    const newCycleMonth = Utilities.formatDate(newCycleMonthDate, Session.getScriptTimeZone(), 'yyyy-MM');
+    
+    // 지출/수입 여부 확인
+    const isExpense = data.type === '지출';
+    
+    // 업데이트할 행 데이터 구성
+    const updatedRow = new Array(MAX_COLS_TRANSACTIONS).fill(null);
+    updatedRow[COL_INDICES.TIMESTAMP - 1] = sheet.getRange(rowIndex, COL_INDICES.TIMESTAMP).getValue();
+    updatedRow[COL_INDICES.DATE - 1] = data.date;
+    updatedRow[COL_INDICES.TYPE - 1] = data.type;
+    updatedRow[COL_INDICES.AMOUNT - 1] = Number(data.amount) || 0;
+    updatedRow[COL_INDICES.CONTENT - 1] = data.content;
+    updatedRow[COL_INDICES.PAYMENT_METHOD - 1] = isExpense ? (data.paymentMethod || '') : null;
+    updatedRow[COL_INDICES.CATEGORY1 - 1] = isExpense ? 
+      (data.mainCategory ?? '') : 
+      (data.incomeSource ?? '');
+    updatedRow[COL_INDICES.CATEGORY2 - 1] = isExpense ? (data.subCategory ?? '') : '';
+    updatedRow[COL_INDICES.CYCLE_MONTH - 1] = newCycleMonth;
+    
+    // 시트 업데이트
+    sheet.getRange(rowIndex, 1, 1, MAX_COLS_TRANSACTIONS).setValues([updatedRow]);
+    SpreadsheetApp.flush();
+    
+    // 캐시 무효화 (이전 주기월과 새 주기월 모두)
+    const cache = CacheService.getScriptCache();
+    if (previousCycleMonth) cache.remove('trans_' + previousCycleMonth);
+    if (newCycleMonth) cache.remove('trans_' + newCycleMonth);
+    
+    return { 
+      success: true, 
+      message: '거래가 수정되었습니다.',
+      cycleMonthForRefresh: newCycleMonth 
+    };
+    
+  } catch (err) {
+    Logger.log(`updateTransaction 오류: ${err.stack}`);
+    return { 
+      success: false, 
+      message: `거래 수정 중 오류: ${err.message}` 
+    };
+  }
+}
+
+function deleteTransaction(rowIndex) {
+  let cycleMonthForRefresh = '';
+  
+  try {
+    const sheet = getSheet(SHEET_NAMES.TRANSACTIONS);
+    
+    if (!rowIndex || rowIndex <= 1) {
+      throw new Error('유효하지 않은 행 번호입니다.');
+    }
+
+    // 삭제할 거래의 주기월 가져오기 (캐시 무효화용)
+    cycleMonthForRefresh = formatCycleMonth(
+      sheet.getRange(rowIndex, COL_INDICES.CYCLE_MONTH).getValue()
+    );
+    
+    // 행 삭제
+    sheet.deleteRow(rowIndex);
+    SpreadsheetApp.flush();
+    
+    // 캐시 무효화
+    if (cycleMonthForRefresh) {
+      CacheService.getScriptCache().remove('trans_' + cycleMonthForRefresh);
+    }
+    
+    return { 
+      success: true, 
+      message: '거래가 삭제되었습니다.',
+      cycleMonthForRefresh 
+    };
+    
+  } catch (err) {
+    Logger.log(`deleteTransaction 오류: ${err.stack}`);
+    
+    // 오류 발생 시에도 캐시 무효화 시도
+    if (cycleMonthForRefresh) {
+      try {
+        CacheService.getScriptCache().remove('trans_' + cycleMonthForRefresh);
+      } catch (cacheErr) {
+        Logger.log(`캐시 무효화 실패: ${cacheErr.message}`);
+      }
+    }
+    
+    return { 
+      success: false, 
+      message: `삭제 중 오류: ${err.message}` 
+    };
+  }
+}
+
+/* ── 6. 앱 설정 및 기준 데이터 조회 함수들 ─────────────────── */
+function getAppSetupData(initialCycleMonth) {
+  try {
+    // 기본 설정 데이터 로드
+    const categories = getExpenseCategories();
+    const methods = getPaymentMethods();
+    const sources = getIncomeSources();
+    
+    // 초기 거래 데이터 로드 (옵션)
+    let initialTransactionsData = { data: [], success: true };
+    
+    if (initialCycleMonth) {
+      const transResult = getTransactions(initialCycleMonth);
+      if (!transResult.success) {
+        initialTransactionsData = { 
+          data: [], 
+          success: false, 
+          error: transResult.error 
+        };
+      } else {
+        initialTransactionsData.data = transResult.data;
+      }
+    }
+    
+    // 응답 데이터 구성
+    const response = {
+      success: true,
+      expenseCategories: categories.error ? {} : categories,
+      paymentMethods: methods.error ? [] : methods,
+      incomeSources: sources.error ? [] : sources,
+      initialTransactions: initialTransactionsData.data
+    };
+    
+    // 오류 발생한 부분이 있는지 체크
+    const hasErrors = categories.error || methods.error || sources.error || !initialTransactionsData.success;
+    if (hasErrors) {
+      response.success = false;
+      response.error = "초기 설정 데이터 일부 로딩 실패";
+    }
+    
+    return response;
+    
+  } catch (err) {
+    Logger.log(`getAppSetupData 오류: ${err.stack}`);
+    return { 
+      success: false, 
+      error: `앱 초기 설정 데이터 로딩 중 오류 발생: ${err.message}` 
+    };
+  }
+}
+
+function getExpenseCategories() {
+  try {
+    return getCached('expenseCategories_v2', () => {
+      const sheet = getSheet(SHEET_NAMES.EXPENSE_CATEGORIES);
+      const lastRow = sheet.getLastRow();
+      
+      if (lastRow < 2) {
+        return {};
+      }
+      
+      const values = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+      const categoryMap = {};
+      
+      values.forEach(([mainCategory, subCategory]) => {
+        if (!mainCategory) return;
+        
+        const main = String(mainCategory).trim();
+        if (!categoryMap[main]) {
+          categoryMap[main] = [];
+        }
+        
+        if (subCategory) {
+          categoryMap[main].push(String(subCategory).trim());
+        }
+      });
+      
+      return categoryMap;
+    });
+    
+  } catch (err) {
+    Logger.log(`getExpenseCategories 오류: ${err.message}`);
+    return { error: "비용 카테고리 로드 실패" };
+  }
+}
+
+function getPaymentMethods() {
+  try {
+    return getCached('paymentMethods_v2', () => {
+      const sheet = getSheet(SHEET_NAMES.PAYMENT_METHODS);
+      const lastRow = sheet.getLastRow();
+      
+      if (lastRow < 2) {
+        return [];
+      }
+      
+      const values = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+      
+      return values
+        .filter(row => row[0]) // 이름이 있는 것만
+        .map(([name, isCardStr, target]) => ({
+          name: String(name).trim(),
+          isCard: String(isCardStr).toLowerCase() === 'true',
+          target: Number(target) || 0
+        }));
+    });
+    
+  } catch (err) {
+    Logger.log(`getPaymentMethods 오류: ${err.message}`);
+    return { error: "결제 수단 로드 실패" };
+  }
+}
+
+function getIncomeSources() {
+  try {
+    return getCached('incomeSources_v2', () => {
+      const sheet = getSheet(SHEET_NAMES.INCOME_SOURCES);
+      const lastRow = sheet.getLastRow();
+      
+      if (lastRow < 2) {
+        return [];
+      }
+      
+      return sheet.getRange(2, 1, lastRow - 1, 1)
+        .getValues()
+        .flat()
+        .map(source => String(source).trim())
+        .filter(Boolean);
+    });
+    
+  } catch (err) {
+    Logger.log(`getIncomeSources 오류: ${err.message}`);
+    return { error: "수입원 로드 실패" };
+  }
+}
+
+function getCardData(cardName, cycleMonthForBilling, performanceReferenceMonth) {
+  try {
+    if (!cardName) {
+      throw new Error('카드명이 필요합니다.');
+    }
+    
+    const sheet = getSheet(SHEET_NAMES.TRANSACTIONS);
+    
+    // 청구월 거래 내역에서 해당 카드 사용액 계산
+    const allTransactionsForBillingMonth = getTransactions(cycleMonthForBilling);
+    if (!allTransactionsForBillingMonth.success) {
+      throw new Error(allTransactionsForBillingMonth.error);
+    }
+    
+    let billingAmount = 0;
+    (allTransactionsForBillingMonth.data || []).forEach(transaction => {
+      if (transaction.paymentMethod === cardName && transaction.type === '지출') {
+        billingAmount += transaction.amount;
+      }
+    });
+    
+    // 실적 기준월의 카드 사용액 계산
+    const performanceYear = Number(String(performanceReferenceMonth).slice(0, 4));
+    const performanceMonth = Number(String(performanceReferenceMonth).slice(5));
+    let performanceAmount = 0;
+    
+    if (sheet.getLastRow() > 1) {
+      const allRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+      
+      allRows.forEach(row => {
+        const dateObj = new Date(row[COL_INDICES.DATE - 1]);
+        const isTargetCard = String(row[COL_INDICES.PAYMENT_METHOD - 1]) === cardName;
+        const isExpense = String(row[COL_INDICES.TYPE - 1]) === '지출';
+        const isTargetMonth = dateObj.getFullYear() === performanceYear && 
+                             (dateObj.getMonth() + 1) === performanceMonth;
+        
+        if (isTargetCard && isExpense && isTargetMonth) {
+          performanceAmount += Number(row[COL_INDICES.AMOUNT - 1]) || 0;
+        }
+      });
+    }
+    
+    // 카드 목표 금액 조회
+    const paymentMethods = getPaymentMethods();
+    if (paymentMethods.error) {
+      throw new Error(paymentMethods.error);
+    }
+    
+    const cardInfo = (paymentMethods || []).find(method => method.name === cardName);
+    
+    return {
+      success: true,
+      cardName,
+      billingAmount,
+      performanceAmount,
+      performanceTarget: cardInfo ? cardInfo.target : 0,
+      billingCycleMonthForCard: cycleMonthForBilling,
+      performanceReferenceMonthForDisplay: performanceReferenceMonth
+    };
+    
+  } catch (err) {
+    Logger.log(`getCardData 오류: ${err.stack}`);
+    return { 
+      success: false, 
+      error: '카드 데이터 조회 오류' 
+    };
+  }
+}
+
+/* ── 7. 이벤트 핸들러 ─────────────────── */
+function onEdit(e) {
+  const sheet = e.range.getSheet();
+  const cache = CacheService.getScriptCache();
+  
+  // 지출 카테고리 시트 편집 시 캐시 무효화
+  if (sheet.getName() === SHEET_NAMES.EXPENSE_CATEGORIES) {
+    cache.remove('expenseCategories_v2');
+    Logger.log('지출 카테고리 캐시 무효화');
+    return;
+  }
+  
+  // 거래 시트 편집 시 해당 주기월 캐시 무효화
+  if (sheet.getName() === SHEET_NAMES.TRANSACTIONS) {
+    const cycleMonth = formatCycleMonth(
+      sheet.getRange(e.range.getRow(), COL_INDICES.CYCLE_MONTH).getValue()
+    );
+    if (cycleMonth) {
+      cache.remove('trans_' + cycleMonth);
+      Logger.log(`거래 데이터 캐시 무효화: ${cycleMonth}`);
+    }
+  }
+  
+  // 결제 수단 시트 편집 시 캐시 무효화
+  if (sheet.getName() === SHEET_NAMES.PAYMENT_METHODS) {
+    cache.remove('paymentMethods_v2');
+    Logger.log('결제 수단 캐시 무효화');
+  }
+  
+  // 수입원 시트 편집 시 캐시 무효화
+  if (sheet.getName() === SHEET_NAMES.INCOME_SOURCES) {
+    cache.remove('incomeSources_v2');
+    Logger.log('수입원 캐시 무효화');
+  }
 }
