@@ -2,7 +2,10 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <link rel="icon" href="favicon.png" type="image/png"> <link rel="apple-touch-icon" href="icons/icon-192.png"> <link rel="stylesheet" href="style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
   <link rel="manifest" href="manifest.json">
   <title>나의 스마트 가계부</title>
 </head>
@@ -13,25 +16,44 @@
       <button class="tab-button" onclick="showView('cardView')">카드</button>
     </div>
 
-    <div id="calendarView" class="tab-content active">
-      <div class="calendar-nav">
-        <button class="nav-btn" onclick="changeMonth(-1)">이전 달</button>
-        <h2 id="currentMonthYear"></h2>
-        <button class="nav-btn" onclick="changeMonth(1)">다음 달</button>
+    <!-- ▼▼▼ 수정된 부분: 달력과 검색창을 감싸는 wrapper div 추가 ▼▼▼ -->
+    <div id="calendar-wrapper" style="position: relative;">
+
+      <div id="calendarView" class="tab-content active">
+        <div class="calendar-nav">
+          <button class="nav-btn" onclick="changeMonth(-1)">이전 달</button>
+          <h2 id="currentMonthYear"></h2>
+          <button class="nav-btn" onclick="changeMonth(1)">다음 달</button>
+        </div>
+
+        <div class="summary">
+          <div><h3>총 수입</h3><p id="totalIncome" class="total-income">₩0</p></div>
+          <div><h3>총 지출</h3><p id="totalExpense" class="total-expense">₩0</p></div>
+          <div><h3>합계</h3><p id="totalBalance" class="total-balance">₩0</p></div>
+        </div>
+
+        <div id="loader" class="loader"></div>
+        <table id="calendarGrid">
+          <thead><tr><th>일</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th>토</th></tr></thead>
+          <tbody id="calendarBody"></tbody>
+        </table>
       </div>
 
-      <div class="summary">
-        <div><h3>총 수입</h3><p id="totalIncome" class="total-income">₩0</p></div>
-        <div><h3>총 지출</h3><p id="totalExpense" class="total-expense">₩0</p></div>
-        <div><h3>합계</h3><p id="totalBalance" class="total-balance">₩0</p></div>
+      <!-- ▼▼▼ 여기에 새로운 검색창 UI 코드를 추가합니다. ▼▼▼ -->
+      <div class="search-container" style="position: absolute; top: 10px; right: 10px; z-index: 10; text-align: right;">
+          <div>
+              <input type="text" id="searchInput" placeholder="내용 검색..." style="padding: 5px; border-radius: 5px; border: 1px solid #ccc;">
+              <button id="searchButton" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer;">검색</button>
+          </div>
+          <div id="searchResults" style="position: absolute; top: 100%; right: 0; background-color: white; border: 1px solid #ccc; border-radius: 5px; min-width: 220px; max-height: 300px; overflow-y: auto; box-shadow: 0 2px 5px rgba(0,0,0,0.2); margin-top: 5px;">
+              <!-- 검색 결과가 여기에 표시됩니다 -->
+          </div>
       </div>
+      <!-- ▲▲▲ 검색창 UI 코드 끝 ▲▲▲ -->
 
-      <div id="loader" class="loader"></div>
-      <table id="calendarGrid">
-        <thead><tr><th>일</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th>토</th></tr></thead>
-        <tbody id="calendarBody"></tbody>
-      </table>
     </div>
+    <!-- ▲▲▲ wrapper div 끝 ▲▲▲ -->
+
 
     <div id="cardView" class="tab-content">
       <h2>카드 실적 및 청구금액</h2>
@@ -67,7 +89,7 @@
           <label><input type="radio" name="type" value="지출" onchange="toggleTypeSpecificFields()" checked> 지출</label>
           <label><input type="radio" name="type" value="수입" onchange="toggleTypeSpecificFields()"> 수입</label>
         </div>
-        
+       
         <div class="form-row">
             <div>
                 <label for="transactionAmount">금액:</label>
@@ -91,7 +113,7 @@
           <div class="form-row">
             <div>
                 <label for="mainCategory">주 카테고리 (지출):</label>
-                <select id="mainCategory" name="mainCategory" onchange="updateSubCategories()"></select>
+                <select id="mainCategory" name="mainCategory"></select> <!-- onchange는 app.js에서 관리 -->
             </div>
             <div>
                 <label for="subCategory">하위 카테고리 (지출):</label>
