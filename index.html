@@ -11,50 +11,48 @@
 </head>
 <body>
   <div class="container">
-    <!-- ▼▼▼ 수정된 부분: tab-navigation에 flexbox 스타일을 적용하고 검색창을 이곳으로 이동 ▼▼▼ -->
     <div class="tab-navigation" style="display: flex; justify-content: space-between; align-items: center; position: relative;">
-      <!-- 탭 버튼 그룹 -->
       <div>
         <button class="tab-button active" onclick="showView('calendarView')">달력</button>
         <button class="tab-button" onclick="showView('cardView')">카드</button>
       </div>
 
-      <!-- 검색창 UI -->
-      <div class="search-container" style="position: relative;">
-          <div>
-              <input type="text" id="searchInput" placeholder="내용 검색..." style="padding: 5px; border-radius: 5px; border: 1px solid #ccc; vertical-align: middle;">
-              <button id="searchButton" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer; vertical-align: middle;">검색</button>
+      <!-- ▼▼▼ 수정된 부분: 검색창 UI에 주기 선택 메뉴 2개 추가 ▼▼▼ -->
+      <div class="search-container" style="position: relative; font-size: 2em;">
+          <div style="display: flex; align-items: center; gap: 5px;">
+              <!-- 주기 선택 드롭다운 메뉴 -->
+              <select id="searchStartCycle" title="검색 시작 주기" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc;"></select>
+              <span style="font-size: 16px; vertical-align: middle;">~</span>
+              <select id="searchEndCycle" title="검색 종료 주기" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc;"></select>
+              
+              <input type="text" id="searchInput" placeholder="내용 검색..." style="width: 200px; padding: 5px; border-radius: 5px; border: 1px solid #ccc;">
+              <button id="searchButton" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer;">검색</button>
           </div>
-          <div id="searchResults" style="position: absolute; top: 110%; right: 0; background-color: white; border: 1px solid #ccc; border-radius: 5px; min-width: 220px; max-height: 300px; overflow-y: auto; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 20;">
+          <div id="searchResults" style="position: absolute; top: 110%; right: 0; background-color: white; border: 1px solid #ccc; border-radius: 5px; width: 440px; min-height: 150px; max-height: 450px; overflow-y: auto; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 20;">
               <!-- 검색 결과가 여기에 표시됩니다 -->
           </div>
       </div>
+      <!-- ▲▲▲ 수정 끝 ▲▲▲ -->
     </div>
-    <!-- ▲▲▲ 수정 끝 ▲▲▲ -->
 
-
-    <!-- ▼▼▼ 불필요해진 calendar-wrapper div는 제거했습니다. ▼▼▼ -->
+    <!-- ... (이하 나머지 HTML 코드는 이전과 동일) ... -->
     <div id="calendarView" class="tab-content active">
       <div class="calendar-nav">
         <button class="nav-btn" onclick="changeMonth(-1)">이전 달</button>
         <h2 id="currentMonthYear"></h2>
         <button class="nav-btn" onclick="changeMonth(1)">다음 달</button>
       </div>
-
       <div class="summary">
         <div><h3>총 수입</h3><p id="totalIncome" class="total-income">₩0</p></div>
         <div><h3>총 지출</h3><p id="totalExpense" class="total-expense">₩0</p></div>
         <div><h3>합계</h3><p id="totalBalance" class="total-balance">₩0</p></div>
       </div>
-
       <div id="loader" class="loader"></div>
       <table id="calendarGrid">
         <thead><tr><th>일</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th>토</th></tr></thead>
         <tbody id="calendarBody"></tbody>
       </table>
     </div>
-
-
     <div id="cardView" class="tab-content">
       <h2>카드 실적 및 청구금액</h2>
       <div id="cardViewContent">
@@ -68,78 +66,48 @@
       </div>
     </div>
   </div>
-
   <div id="transactionModal" class="modal">
     <div class="modal-content">
       <span class="close-button" onclick="closeModal()">&times;</span>
       <h3 id="modalTitle">거래 추가</h3>
-
       <form id="transactionForm">
         <div id="dailyTransactionsContainer"> <button type="button" id="toggleDailyTransactions" onclick="toggleDailyTransactionVisibility()">거래 내역 보기</button>
             <div id="dailyTransactions" style="display: none;">
                 <div id="dailyTransactionList">불러오는 중...</div>
             </div>
         </div>
-
         <label for="transactionDate">날짜:</label>
         <input type="date" id="transactionDate" name="date" required>
-
         <label>유형:</label>
         <div class="form-radio-group">
           <label><input type="radio" name="type" value="지출" onchange="toggleTypeSpecificFields()" checked> 지출</label>
           <label><input type="radio" name="type" value="수입" onchange="toggleTypeSpecificFields()"> 수입</label>
         </div>
-       
         <div class="form-row">
-            <div>
-                <label for="transactionAmount">금액:</label>
-                <input type="number" id="transactionAmount" name="amount" required placeholder="">
-            </div>
-            <div>
-                <label for="transactionContent">내용:</label>
-                <input type="text" id="transactionContent" name="content" required placeholder="">
-            </div>
+            <div><label for="transactionAmount">금액:</label><input type="number" id="transactionAmount" name="amount" required></div>
+            <div><label for="transactionContent">내용:</label><input type="text" id="transactionContent" name="content" required></div>
         </div>
-
         <div id="expenseSpecificFields">
           <div class="form-row">
-            <div>
-                <label for="paymentMethod">결제수단:</label>
-                <select id="paymentMethod" name="paymentMethod"></select>
-            </div>
-            <div>
-                </div>
+            <div><label for="paymentMethod">결제수단:</label><select id="paymentMethod" name="paymentMethod"></select></div>
+            <div></div>
           </div>
           <div class="form-row">
-            <div>
-                <label for="mainCategory">주 카테고리 (지출):</label>
-                <select id="mainCategory" name="mainCategory"></select> <!-- onchange는 app.js에서 관리 -->
-            </div>
-            <div>
-                <label for="subCategory">하위 카테고리 (지출):</label>
-                <select id="subCategory" name="subCategory"></select>
-            </div>
+            <div><label for="mainCategory">주 카테고리 (지출):</label><select id="mainCategory" name="mainCategory"></select></div>
+            <div><label for="subCategory">하위 카테고리 (지출):</label><select id="subCategory" name="subCategory"></select></div>
           </div>
         </div>
-
         <div id="incomeSpecificFields">
-          <label for="incomeSource">수입원:</label>
-          <select id="incomeSource" name="incomeSource"></select>
+          <label for="incomeSource">수입원:</label><select id="incomeSource" name="incomeSource"></select>
         </div>
-        <!-- 저장 / 삭제 버튼 -->
         <div style="display:flex; gap:8px; margin-top:25px;">
-          <button type="button" id="deleteBtn" class="modal-action-btn"
-                  style="background:#dc3545; display:none;" 
-                  onclick="handleDelete()">삭제</button>
-
-          <button type="submit" id="saveBtn" class="modal-action-btn"
-                  style="background:#28a745;">저장</button>
+          <button type="button" id="deleteBtn" class="modal-action-btn" style="background:#dc3545; display:none;" onclick="handleDelete()">삭제</button>
+          <button type="submit" id="saveBtn" class="modal-action-btn" style="background:#28a745;">저장</button>
         </div>
       </form>
     </div>
   </div>
-
-  <div id="toast">알림 메시지</div>
+  <div id="toast"></div>
   <script src="app.js" defer></script>
 </body>
 </html>
