@@ -510,25 +510,40 @@ const searchStartCycleSelect = document.getElementById('searchStartCycle');
 const searchEndCycleSelect = document.getElementById('searchEndCycle');
 
 /**
- * 검색창 옆 주기 선택 드롭다운 메뉴 2개를 채우고 기본값을 설정하는 함수
+ * 검색창 옆 주기 선택 드롭다운 메뉴 2개를 채우고 기본값을 설정하는 함수 (수정됨)
  */
 function populateCycleDropdowns() {
     const cycles = [];
-    const startDate = new Date(2025, 0, 1); // 시작 기준: 2025년 1월
+    const firstCycleDate = new Date(2025, 0, 1); // 앱의 시작 주기: 2025년 1월
+
     const today = new Date();
-
-    // 현재 날짜 기준의 주기월 계산
-    let currentCycleYear = today.getDate() < 18 ? (today.getMonth() === 0 ? today.getFullYear() - 1 : today.getFullYear()) : today.getFullYear();
-    let currentCycleMonthIndex = today.getDate() < 18 ? (today.getMonth() === 0 ? 11 : today.getMonth() - 1) : today.getMonth();
+    // 현재 날짜 기준의 주기월 계산 (determineInitialCycleMonth와 동일한 로직)
+    let endCycleYear = today.getFullYear();
+    let endCycleMonthIndex = today.getMonth();
+    if (today.getDate() < 18) {
+        endCycleMonthIndex -= 1;
+        if (endCycleMonthIndex < 0) {
+            endCycleMonthIndex = 11;
+            endCycleYear -= 1;
+        }
+    }
     
-    let loopDate = new Date(currentCycleYear, currentCycleMonthIndex, 1);
+    // 루프를 돌릴 현재 날짜 설정. 단, 2025년 이전으로 가지 않도록 함.
+    let loopDate = new Date(Math.max(firstCycleDate, new Date(endCycleYear, endCycleMonthIndex, 1)));
 
-    // 과거 3년치 또는 2025년 1월까지 주기 생성
-    while (loopDate >= startDate && cycles.length < 36) {
+    // 현재 주기부터 2025년 1월까지 거꾸로 목록 생성
+    while (loopDate >= firstCycleDate) {
         const year = loopDate.getFullYear();
         const month = String(loopDate.getMonth() + 1).padStart(2, '0');
         cycles.push(`${year}-${month}`);
+        
+        // 루프 날짜를 한 달 전으로 설정
         loopDate.setMonth(loopDate.getMonth() - 1);
+    }
+
+    if (cycles.length === 0) {
+        console.error("주기 목록을 생성할 수 없습니다. 날짜 설정을 확인하세요.");
+        return;
     }
 
     searchStartCycleSelect.innerHTML = '';
@@ -547,11 +562,9 @@ function populateCycleDropdowns() {
     });
 
     // 기본값 설정
-    searchEndCycleSelect.value = currentCycleMonth;
+    searchEndCycleSelect.value = cycles[0]; // 목록의 첫 번째 값 (가장 최신 주기)
     const oneYearAgoIndex = Math.min(11, cycles.length - 1);
-    if (oneYearAgoIndex >= 0) {
-        searchStartCycleSelect.value = cycles[oneYearAgoIndex];
-    }
+    searchStartCycleSelect.value = cycles[oneYearAgoIndex];
 }
 
 
@@ -616,5 +629,4 @@ function openTransactionModalForEdit(transactionData) {
     populateFormForEdit(transactionData);
     document.getElementById('dailyTransactions').style.display = 'none'; 
     document.getElementById('toggleDailyTransactions').textContent = '거래 내역 보기';
-    document.getElementById('transactionModal').style.display = 'flex';
-}
+    document.getElementById('transactionModal').style.display = 'flex'
