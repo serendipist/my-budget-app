@@ -347,53 +347,68 @@ function updateSubCategories() {
     }
 }
 
+/**
+ * [REVISED] 거래 내역 제출(추가/수정)을 처리하는 함수
+ * 낙관적 UI 업데이트 시 수입/지출에 따라 category1, category2 필드를
+ * 올바르게 매핑하도록 수정했습니다.
+ */
 async function handleTransactionSubmit(e) {
-    e.preventDefault();
-    const fd = new FormData(e.target), data = {};
-    fd.forEach((v, k) => data[k] = v);
-    if (!validateTransactionData(data)) return;
-    const isEditing = !!currentEditingTransaction?.row;
-    const key = 'transactions_' + currentCycleMonth;
-    const originalData = JSON.parse(localStorage.getItem(key) || '[]');
-    let optimisticData = JSON.parse(JSON.stringify(originalData));
-    const itemForServer = { ...data };
-    if (isEditing) {
-        const index = optimisticData.findIndex(t => t?.row?.toString() === currentEditingTransaction.row.toString());
-        if (index > -1) {
-            itemForServer.id_to_update = currentEditingTransaction.row;
-            optimisticData[index] = { 
-                ...optimisticData[index], 
-                ...data, 
-                category1: data.type === '수입' ? data.incomeSource : data.mainCategory,
-                category2: data.type === '수입' ? '' : data.subCategory
-            };
-        }
-    } else {
-        optimisticData.push({ 
-            ...data, 
-            row: `temp-${Date.now()}`, 
-            category1: data.type === '수입' ? data.incomeSource : data.mainCategory,
-            category2: data.type === '수입' ? '' : data.subCategory
-        });
-    }
-    localStorage.setItem(key, JSON.stringify(optimisticData));
-    renderCalendarAndSummary(optimisticData);
-    showToast(isEditing ? '수정 중...' : '저장 중...');
-    closeModal();
-    try {
-        const result = await callAppsScriptApi(isEditing ? 'updateTransaction' : 'addTransaction', { transactionDataString: JSON.stringify(itemForServer) });
-        if (result.success) {
-            showToast(result.message || '완료!', false);
-            await updateCalendarDisplay();
-        } else {
-            throw new Error(result.message || '서버 처리 실패');
-        }
-    } catch (error) {
-        showToast(`실패: ${error.message}`, true);
-        localStorage.setItem(key, JSON.stringify(originalData));
-        renderCalendarAndSummary(originalData);
-    }
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = {};
+    fd.forEach((v, k) => (data[k] = v));
+
+    if (!validateTransactionData(data)) return;
+
+    const isEditing = !!currentEditingTransaction?.row;
+    const key = 'transactions_' + currentCycleMonth;
+    const originalData = JSON.parse(localStorage.getItem(key) || '[]');
+    let optimisticData = JSON.parse(JSON.stringify(originalData));
+
+    // 서버로 보낼 데이터 (id_to_update 포함 가능)
+    const itemForServer = { ...data };
+    
+    // 화면에 즉시 보여줄 데이터 (category1, 2 필드 정리)
+    const itemForUI = {
+        ...data,
+        category1: data.type === '수입' ? data.incomeSource : data.mainCategory,
+        category2: data.type === '수입' ? '' : data.subCategory,
+    };
+
+    if (isEditing) {
+        const index = optimisticData.findIndex(t => t?.row?.toString() === currentEditingTransaction.row.toString());
+        if (index > -1) {
+            itemForServer.id_to_update = currentEditingTransaction.row;
+            // 기존 데이터에 UI용 데이터를 덮어씀
+            optimisticData[index] = { ...optimisticData[index], ...itemForUI };
+        }
+    } else {
+        // UI용 데이터에 임시 row ID 추가
+        optimisticData.push({ ...itemForUI, row: `temp-${Date.now()}` });
+    }
+
+    localStorage.setItem(key, JSON.stringify(optimisticData));
+    renderCalendarAndSummary(optimisticData);
+    showToast(isEditing ? '수정 중...' : '저장 중...');
+    closeModal();
+
+    try {
+        const result = await callAppsScriptApi(isEditing ? 'updateTransaction' : 'addTransaction', { transactionDataString: JSON.stringify(itemForServer) });
+        if (result.success) {
+            showToast(result.message || '완료!', false);
+            // 서버 응답 성공 후, 최신 데이터로 달력 전체를 다시 그림
+            await updateCalendarDisplay(); 
+        } else {
+            throw new Error(result.message || '서버 처리 실패');
+        }
+    } catch (error) {
+        showToast(`실패: ${error.message}`, true);
+        // 실패 시, 원래 데이터로 롤백
+        localStorage.setItem(key, JSON.stringify(originalData));
+        renderCalendarAndSummary(originalData);
+    }
 }
+
 
 function validateTransactionData(data) {
     if (!data.date || !data.amount || !data.content) { showToast("날짜, 금액, 내용은 필수입니다.", true); return false; }
@@ -576,7 +591,7 @@ async function handleDelete() {
 
 /**
  * 서버에서 연도 목록을 가져와 드롭다운 메뉴를 채우는 함수
- */
+*/
 async function populateSearchYearDropdownFromServer() {
     const searchYearSelect = document.getElementById('searchYear');
     if (!searchYearSelect) return;
@@ -665,6 +680,9 @@ function displaySearchResults(results) {
         
         resultItem.addEventListener('click', () => {
             openTransactionModalForEdit(item);
+            // [ADDED] 검색 결과 클릭 후 검색창 숨기기 및 입력 초기화
+            hideSearchResults();
+            clearSearchInput();
         });
         
         resultsList.appendChild(resultItem);
