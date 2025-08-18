@@ -616,4 +616,5 @@ function openTransactionModalForEdit(transactionData) {
     populateFormForEdit(transactionData);
     document.getElementById('dailyTransactions').style.display = 'none'; 
     document.getElementById('toggleDailyTransactions').textContent = '거래 내역 보기';
-    document.getElementById('transactionModal').style.display = 'flex'
+    document.getElementById('transactionModal').style.display = 'flex';
+}
