@@ -728,3 +728,89 @@ async function handleDelete() { /* 이전과 동일 (API 호출) */
     renderCalendarAndSummary(originalData);
   }
 }
+// app.js 파일 하단에 추가
+
+// 1. HTML 요소들을 변수로 가져옵니다.
+const searchInput = document.getElementById('searchInput');
+const searchButton = document.getElementById('searchButton');
+const searchResultsContainer = document.getElementById('searchResults');
+
+// 2. 검색 버튼에 '클릭' 이벤트 리스너를 추가합니다.
+searchButton.addEventListener('click', async () => {
+  const searchTerm = searchInput.value.trim(); // 입력된 검색어 (양쪽 공백 제거)
+  if (searchTerm === '') {
+    alert('검색어를 입력하세요.');
+    return;
+  }
+
+  searchResultsContainer.innerHTML = '<p>검색 중...</p>'; // 사용자에게 검색 중임을 알림
+
+  try {
+    // 3. Code.gs에 추가한 'searchTransactions' 액션을 호출합니다!
+    const response = await callAppScript('searchTransactions', { term: searchTerm });
+
+    if (response.success && response.data.length > 0) {
+      // 4. 검색 성공 시, 결과를 화면에 표시하는 함수 호출
+      displaySearchResults(response.data);
+    } else {
+      searchResultsContainer.innerHTML = '<p>검색 결과가 없습니다.</p>';
+    }
+  } catch (error) {
+    console.error('검색 기능 오류:', error);
+    searchResultsContainer.innerHTML = '<p>검색 중 오류가 발생했습니다.</p>';
+  }
+});
+
+/**
+ * 검색 결과를 목록 형태로 화면에 보여주는 함수
+ * @param {Array} results - Code.gs에서 받아온 거래 내역 객체 배열
+ */
+function displaySearchResults(results) {
+  searchResultsContainer.innerHTML = ''; // 기존 결과 초기화
+  const list = document.createElement('ul');
+  list.style.listStyle = 'none';
+  list.style.padding = '0';
+
+  results.forEach(item => {
+    const listItem = document.createElement('li');
+    listItem.textContent = `[${item.date}] ${item.content} (${item.amount.toLocaleString()}원)`;
+    listItem.style.padding = '8px';
+    listItem.style.borderBottom = '1px solid #eee';
+    listItem.style.cursor = 'pointer';
+
+    // 5. 각 결과 항목에 '클릭' 이벤트 리스너를 추가합니다.
+    listItem.addEventListener('click', () => {
+      // 클릭하면 해당 거래 내역의 수정 창을 엽니다.
+      openTransactionEditModal(item);
+      
+      // 수정 창이 열리면 검색 결과는 다시 초기화
+      searchResultsContainer.innerHTML = '';
+      searchInput.value = '';
+    });
+    list.appendChild(listItem);
+  });
+  searchResultsContainer.appendChild(list);
+}
+
+/**
+ * (★중요★) 거래 내역 수정 창을 여는 함수
+ * 이 함수는 이미 프로젝트에 존재할 것으로 예상됩니다.
+ * 만약 이름이 다르거나 없다면, 기존 수정 로직에 맞게 이 부분을 채워주세요.
+ * @param {object} transactionData - 수정할 거래 내역 정보
+ */
+function openTransactionEditModal(transactionData) {
+    console.log("수정할 거래내역:", transactionData);
+    
+    // 전역 변수에 현재 수정할 거래 정보를 저장
+    currentEditingTransaction = transactionData;
+    
+    // --- 이 아래는 기존에 사용하시던 수정 창을 띄우는 코드를 그대로 사용하시면 됩니다 ---
+    // 예시:
+    // const modal = document.getElementById('edit-modal');
+    // document.getElementById('edit-date-input').value = transactionData.date;
+    // document.getElementById('edit-content-input').value = transactionData.content;
+    // ... (모달 창의 다른 모든 입력 필드 값 채우기) ...
+    // modal.style.display = 'block';
+
+    alert(`'${transactionData.content}' 내역의 수정 창을 엽니다. (이 alert는 실제 수정 로직으로 대체해주세요)`);
+}
