@@ -539,3 +539,4 @@ async function displayCardData() {
     if(loader) loader.style.display = 'none';
   }
 }
+
