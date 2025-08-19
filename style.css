@@ -109,6 +109,7 @@ body {
 
 .search-controls {
   display: flex;
+  justify-content: center;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
@@ -913,3 +914,4 @@ body {
 #toast.error {
   background: #dc3545;
 }
+
