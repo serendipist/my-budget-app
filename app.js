@@ -1,4 +1,4 @@
-// app.js - v4 (검색 기능 추가)
+// app.js - v5 (최종 수정본)
 
 const APPS_SCRIPT_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbwpfhT4H1B_tzK-Db5D6VODxsRTtZLwBboDsBhqRQQRo7mUyx4D186OULpr97bd-5Jh/exec";
 
@@ -24,7 +24,7 @@ async function callAppsScriptApi(actionName, params = {}) {
     if (!response.ok) throw new Error(`서버 응답 오류 (${response.status})`);
     const result = await response.json();
     if (result.success === false) throw new Error(result.error || `"${actionName}" API 요청 실패`);
-    return result; // success, data/error 등을 포함한 전체 객체 반환
+    return result;
   } catch (error) {
     console.error(`[API] Error calling action "${actionName}":`, error);
     showToast(`API 요청 중 오류: ${error.message}`, true);
@@ -64,11 +64,10 @@ function setupEventListeners() {
   document.getElementById('mainCategory').addEventListener('change', updateSubCategories);
   setupSwipeListeners();
   
-  // 검색 버튼 이벤트 리스너 추가
   document.getElementById('searchButton').addEventListener('click', handleSearch);
   document.getElementById('searchInput').addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
-          event.preventDefault(); // 폼 제출 방지
+          event.preventDefault();
           handleSearch();
       }
   });
@@ -336,20 +335,207 @@ function validateTransactionData(data) {
   return true;
 }
 
-// ... (나머지 UI 헬퍼 함수들은 이전과 거의 동일)
-function setupSwipeListeners() { /* 이전과 동일 */ }
-function toggleTypeSpecificFields() { /* 이전과 동일 */ }
-function populateFormDropdowns() { /* 이전과 동일 */ }
-function updateSubCategories() { /* 이전과 동일 */ }
-async function openModal(dateStr) { /* 이전과 동일 */ }
-function closeModal(){ /* 이전과 동일 */ }
-function toggleDailyTransactionVisibility() { /* 이전과 동일 */ }
-async function loadDailyTransactions(dateStr) { /* 이전과 동일 */ }
-function displayDailyTransactions(arr) { /* 이전과 동일 */ }
-function populateFormForEdit(transaction) { /* 이전과 동일 */ }
-function showToast(msg,isErr=false){ /* 이전과 동일 */ }
-function populateCardSelector(){ /* 이전과 동일 */ }
-async function changeCardMonth(d){ /* 이전과 동일 */ }
-async function displayCardData() { /* 이전과 동일 */ }
+function setupSwipeListeners() {
+    const calendarElement = document.getElementById('calendarView');
+    if (!calendarElement) return;
+    let touchstartX = 0, touchendX = 0, touchstartY = 0, touchendY = 0;
+    const SWIPE_THRESHOLD = 50, SWIPE_MAX_VERTICAL = 75;
+    calendarElement.addEventListener('touchstart', e => { touchstartX = e.changedTouches[0].screenX; touchstartY = e.changedTouches[0].screenY; }, { passive: true });
+    calendarElement.addEventListener('touchend', async e => { touchendX = e.changedTouches[0].screenX; touchendY = e.changedTouches[0].screenY; await handleSwipeGesture(); }, false);
+    async function handleSwipeGesture() {
+        const deltaX = touchendX - touchstartX;
+        const deltaY = touchendY - touchstartY;
+        if (Math.abs(deltaX) > SWIPE_THRESHOLD && Math.abs(deltaY) < SWIPE_MAX_VERTICAL) {
+            if (deltaX > 0) { await changeMonth(-1); } else { await changeMonth(1); }
+        }
+    }
+}
 
+function toggleTypeSpecificFields() {
+  const typeRadio = document.querySelector('input[name="type"]:checked');
+  let type = typeRadio ? typeRadio.value : '지출';
+  document.getElementById('expenseSpecificFields').style.display = type === '지출' ? 'block' : 'none';
+  document.getElementById('incomeSpecificFields').style.display  = type === '수입' ? 'block' : 'none';
+}
 
+function populateFormDropdowns() {
+  const pm = document.getElementById('paymentMethod');
+  pm.innerHTML = '<option value="">선택하세요</option>';
+  (paymentMethodsData||[]).forEach(m=>{ const o=document.createElement('option'); o.value=m.name; o.textContent=m.name; pm.appendChild(o); });
+  const mainSel = document.getElementById('mainCategory');
+  mainSel.innerHTML = '<option value="">선택하세요</option>';
+  for (const k in expenseCategoriesData) { const o=document.createElement('option'); o.value=k; o.textContent=k; mainSel.appendChild(o); }
+  updateSubCategories(); 
+  const incSel = document.getElementById('incomeSource');
+  incSel.innerHTML='<option value="">선택하세요</option>';
+  (incomeSourcesData||[]).forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; incSel.appendChild(o); });
+}
+
+function updateSubCategories() {
+  const mainCategorySelect = document.getElementById('mainCategory');
+  const subCategorySelect = document.getElementById('subCategory');
+  if (!mainCategorySelect || !subCategorySelect) return;
+  const mainCategoryValue = mainCategorySelect.value;
+  subCategorySelect.innerHTML = '<option value="">선택하세요</option>'; 
+  if (expenseCategoriesData && expenseCategoriesData[mainCategoryValue]) {
+    expenseCategoriesData[mainCategoryValue].forEach(subCat => {
+      const option = document.createElement('option');
+      option.value = subCat; option.textContent = subCat;
+      subCategorySelect.appendChild(option);
+    });
+  }
+}
+
+async function openModal(dateStr) {
+  document.getElementById('transactionForm').reset();
+  currentEditingTransaction = null; 
+  document.getElementById('deleteBtn').style.display = 'none';
+  document.getElementById('modalTitle').textContent = '거래 추가';
+  document.getElementById('transactionDate').value = dateStr;
+  toggleTypeSpecificFields(); 
+  document.getElementById('dailyTransactionList').innerHTML = '불러오는 중...';
+  document.getElementById('dailyTransactions').style.display = 'none'; 
+  document.getElementById('toggleDailyTransactions').textContent = '거래 내역 보기';
+  document.getElementById('transactionModal').style.display = 'flex'; 
+  await loadDailyTransactions(dateStr);
+}
+
+function closeModal(){
+  const transactionModal = document.getElementById('transactionModal');
+  if (transactionModal) transactionModal.style.display='none'; 
+}
+
+function toggleDailyTransactionVisibility() {
+  const dailySection = document.getElementById('dailyTransactions');
+  const toggleBtn = document.getElementById('toggleDailyTransactions');
+  const isHidden = dailySection.style.display === 'none';
+  if (isHidden) { 
+    dailySection.style.display = 'block'; 
+    toggleBtn.textContent = '거래 내역 숨기기';
+  } else {
+    dailySection.style.display = 'none'; 
+    toggleBtn.textContent = '거래 내역 보기';
+    const preservedDate = document.getElementById('transactionDate').value;
+    document.getElementById('transactionForm').reset();
+    document.getElementById('transactionDate').value = preservedDate;
+    document.getElementById('modalTitle').textContent = '거래 추가';
+    document.getElementById('deleteBtn').style.display = 'none';
+    currentEditingTransaction = null; 
+    toggleTypeSpecificFields();
+  }
+}
+
+async function loadDailyTransactions(dateStr) {
+  const list = document.getElementById('dailyTransactionList');
+  if (!list) return;
+  list.textContent = '불러오는 중...';
+  try {
+    const result = await callAppsScriptApi('getTransactionsByDate', { date: dateStr });
+    displayDailyTransactions(result.data || []);
+  } catch (error) {
+    if (list) list.textContent = '일일 거래 내역 로딩 실패.';
+  }
+}
+
+function displayDailyTransactions(arr) {
+  const list = document.getElementById('dailyTransactionList');
+  if (!list) return;
+  if (!Array.isArray(arr) || arr.length === 0) { 
+    list.textContent = '해당 날짜의 거래 내역이 없습니다.'; 
+    return; 
+  }
+  list.innerHTML = '';
+  arr.forEach(function(t) {
+    const d = document.createElement('div');
+    d.classList.add('transaction-item', t.type === '수입' ? 'income' : 'expense');
+    let txt = `[${t.type}] ${t.content || ''}: ${Number(t.amount || 0).toLocaleString()}원`;
+    if (t.type === '지출' && t.paymentMethod) txt += ` (${t.paymentMethod})`;
+    if (t.category1) txt += ` - ${t.category1}`;
+    if (t.category2) txt += ` / ${t.category2}`;
+    d.textContent = txt; 
+    d.style.cursor = 'pointer';
+    d.addEventListener('click', () => populateFormForEdit(t));
+    list.appendChild(d);
+  });
+}
+
+function populateFormForEdit(transaction) {
+  if (!transaction || typeof transaction.row === 'undefined') return;
+  currentEditingTransaction = transaction; 
+  document.getElementById('transactionForm').reset(); 
+  document.getElementById('modalTitle').textContent = '거래 수정';
+  document.getElementById('transactionDate').value = transaction.date || '';
+  document.getElementById('transactionAmount').value = transaction.amount || '';
+  document.getElementById('transactionContent').value = transaction.content || '';
+  document.querySelectorAll('input[name="type"]').forEach(r => r.checked = (r.value === transaction.type));
+  toggleTypeSpecificFields();
+  if (transaction.type === '지출') {
+    document.getElementById('paymentMethod').value = transaction.paymentMethod || '';
+    const mainCategorySelect = document.getElementById('mainCategory');
+    mainCategorySelect.value = transaction.category1 || ''; 
+    updateSubCategories(); 
+    document.getElementById('subCategory').value = transaction.category2 || '';
+  } else if (transaction.type === '수입') {
+    document.getElementById('incomeSource').value = transaction.category1 || ''; 
+  }
+  document.getElementById('deleteBtn').style.display = 'block';
+}
+
+function showToast(msg,isErr=false){
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg; 
+  t.style.backgroundColor = isErr ? '#dc3545' : '#28a745'; 
+  t.style.visibility = 'visible'; 
+  t.style.opacity = '1';
+  setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=> t.style.visibility = 'hidden', 500); }, 3000);
+}
+
+function populateCardSelector(){
+  const sel = document.getElementById('cardSelector');
+  if (!sel) return;
+  sel.innerHTML='<option value="">카드를 선택하세요</option>';
+  (paymentMethodsData||[]).filter(m=>m.isCard).forEach(c=>{
+    const o=document.createElement('option'); 
+    o.value=c.name; 
+    o.textContent=c.name; 
+    sel.appendChild(o);
+  });
+}
+
+async function changeCardMonth(d){
+  cardPerformanceMonthDate.setMonth(cardPerformanceMonthDate.getMonth()+d); 
+  await displayCardData(); 
+}
+
+async function displayCardData() {
+  const cardSel = document.getElementById('cardSelector');
+  const det = document.getElementById('cardDetails');
+  const lbl = document.getElementById('cardMonthLabel');
+  if (!cardSel || !det || !lbl) return;
+  const card = cardSel.value;
+  if (!card){ 
+    det.innerHTML = '<p>카드를 선택해주세요.</p>'; 
+    lbl.textContent = ''; 
+    return; 
+  }
+  
+  const loader = document.getElementById('loader');
+  if(loader) loader.style.display = 'block';
+  
+  const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
+  lbl.textContent = `${perfMonth} 기준`;
+
+  try {
+    const result = await callAppsScriptApi('getCardData', { cardName: card, cycleMonthForBilling: currentCycleMonth, performanceReferenceMonth: perfMonth });
+    const d = result.data;
+    if (!result.success || !d) throw new Error(result.error || '카드 데이터 구조 오류');
+    const { billingCycleMonthForCard, performanceReferenceMonthForDisplay, billingAmount, performanceAmount, performanceTarget, cardName } = d;
+    const rate = Number(performanceTarget) > 0 ? ((Number(performanceAmount)/Number(performanceTarget))*100).toFixed(1)+'%' : '0%';
+    det.innerHTML = `<h4>${cardName || card}</h4> <p><strong>청구 기준월:</strong> ${billingCycleMonthForCard}</p> <p><strong>청구 예정 금액:</strong> ${Number(billingAmount).toLocaleString()}원</p><hr> <p><strong>실적 산정월:</strong> ${performanceReferenceMonthForDisplay}</p> <p><strong>현재 사용액(실적):</strong> ${Number(performanceAmount).toLocaleString()}원</p> <p><strong>실적 목표 금액:</strong> ${Number(performanceTarget).toLocaleString()}원</p> <p><strong>달성률:</strong> ${rate}</p> <p style="font-size:0.8em;color:grey;">(실적은 카드사의 실제 집계와 다를 수 있습니다)</p>`;
+  } catch (error) {
+    det.innerHTML = '<p>카드 데이터를 불러오는 데 실패했습니다.</p>';
+  } finally {
+    if(loader) loader.style.display = 'none';
+  }
+}
