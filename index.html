@@ -21,16 +21,11 @@
       </div>
       
       <!-- 검색 영역을 별도로 분리 -->
-      <div class="search-section">
-        <div class="search-controls">
-          <select id="searchYear" title="검색 연도">
-            <option value="">년도 선택</option>
-            <!-- JavaScript에서 동적으로 채워짐 -->
-          </select>
-          <input type="text" id="searchInput" placeholder="내용 검색..." maxlength="50">
-          <button id="searchButton">검색</button>
-          <button id="clearSearchButton" style="display: none;">닫기</button>
-        </div>
+      <div class="search-controls">
+        <input type="text" id="searchInput" placeholder="내용 검색..." maxlength="50">
+        <button id="searchButton">검색</button>
+        <button id="clearSearchButton" style="display: none;">닫기</button>
+      </div>
         
         <!-- 검색 결과 영역 -->
         <div id="searchResults" class="search-results hidden">
@@ -157,3 +152,4 @@
   <script src="app.js" defer></script>
 </body>
 </html>
+
