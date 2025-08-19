@@ -1,6 +1,6 @@
 // app.js - v4 (검색 기능 추가)
 
-const APPS_SCRIPT_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbzjP671pu6MMLKhmTXHwqCu-wci-Y-RM0Sl5TlQO0HmGsyrH83DBj6dsh62LqHIf-YD/exec";
+const APPS_SCRIPT_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbxwLsahNaEOhZ3bfK2xaCe6o04smKy-ADaMnE6zCGWbWWWJV-YDoAr0ki5qFKzFvxEV/exec";
 
 /* === 전역 상태 === */
 let currentDisplayDate = new Date();
@@ -351,3 +351,4 @@ function showToast(msg,isErr=false){ /* 이전과 동일 */ }
 function populateCardSelector(){ /* 이전과 동일 */ }
 async function changeCardMonth(d){ /* 이전과 동일 */ }
 async function displayCardData() { /* 이전과 동일 */ }
+
