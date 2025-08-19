@@ -615,36 +615,35 @@ async function populateSearchYearDropdownFromServer() {
 }
 
 async function handleSearchClick() {
-    const searchInput = document.getElementById('searchInput');
-    const searchYearSelect = document.getElementById('searchYear');
-    const searchResultsContainer = document.getElementById('searchResults');
-    
-    const searchTerm = searchInput.value.trim();
-    const selectedYear = searchYearSelect.value;
+    const searchInput = document.getElementById('searchInput');
+    // const searchYearSelect = document.getElementById('searchYear'); // 삭제
+    const searchResultsContainer = document.getElementById('searchResults');
+    
+    const searchTerm = searchInput.value.trim();
+    // const selectedYear = searchYearSelect.value; // 삭제
 
-    if (searchTerm === '') {
-        showToast('검색어를 입력하세요.', true);
-        return;
-    }
+    if (searchTerm === '') {
+        showToast('검색어를 입력하세요.', true);
+        return;
+    }
 
-    // 검색 결과 컨테이너 표시 및 로딩 메시지
-    searchResultsContainer.classList.remove('hidden');
-    searchResultsContainer.innerHTML = '<div class="search-results-header">검색 중...</div>';
+    searchResultsContainer.classList.remove('hidden');
+    searchResultsContainer.innerHTML = '<div class="search-results-header">검색 중...</div>';
 
-    try {
-        const results = await callAppsScriptApi('searchTransactions', { 
-            term: searchTerm, 
-            year: selectedYear 
-        });
+    try {
+        // API 호출 시 'year' 파라미터를 완전히 제거합니다.
+        const results = await callAppsScriptApi('searchTransactions', { 
+            term: searchTerm 
+        });
 
-        if (results && results.length > 0) {
-            displaySearchResults(results);
-        } else {
-            searchResultsContainer.innerHTML = '<div class="search-results-header">검색 결과가 없습니다.</div>';
-        }
-    } catch (error) {
-        searchResultsContainer.innerHTML = `<div class="search-results-header">검색 중 오류: ${error.message}</div>`;
-    }
+        if (results && results.length > 0) {
+            displaySearchResults(results);
+        } else {
+            searchResultsContainer.innerHTML = '<div class="search-results-header">검색 결과가 없습니다.</div>';
+        }
+    } catch (error) {
+        searchResultsContainer.innerHTML = `<div class="search-results-header">검색 중 오류: ${error.message}</div>`;
+    }
 }
 
 function displaySearchResults(results) {
@@ -713,4 +712,5 @@ function openTransactionModalForEdit(transactionData) {
     // 모달을 표시합니다.
     document.getElementById('transactionModal').style.display = 'flex';
 }
+
 
