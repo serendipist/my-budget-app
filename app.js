@@ -62,7 +62,7 @@ window.onload = async () => {
   setupEventListeners();
   
   // 3. UI 요소 채우기 (서버 데이터 필요)
-  await populateSearchYearDropdownFromServer();
+  //await populateSearchYearDropdownFromServer();
 
   const loader = document.getElementById('loader');
   if(loader) loader.style.display = 'block';
@@ -713,3 +713,4 @@ function openTransactionModalForEdit(transactionData) {
     // 모달을 표시합니다.
     document.getElementById('transactionModal').style.display = 'flex';
 }
+
