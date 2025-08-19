@@ -1,6 +1,6 @@
 // app.js - v5 (최종 수정본)
 
-const APPS_SCRIPT_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbxawasiW41voJnJpTm4VCBQQsYoGxsNgQhSEu8Evh7GaEBST7lB0jfu8LBOxtOrV0gp/exec";
+const APPS_SCRIPT_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbwRZ0mbjO9BFy4m3AspAM----N_c7f7iVcNSTW2T9vMXTXW4ijzEssLD8g0sQby54GQ/exec";
 
 /* === 전역 상태 === */
 let currentDisplayDate = new Date();
@@ -539,5 +539,6 @@ async function displayCardData() {
     if(loader) loader.style.display = 'none';
   }
 }
+
 
 
