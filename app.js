@@ -1,6 +1,6 @@
-// app.js - v5 (최종 수정본)
+// app.js - v6 (POST 방식 적용 최종본)
 
-const APPS_SCRIPT_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbwRZ0mbjO9BFy4m3AspAM----N_c7f7iVcNSTW2T9vMXTXW4ijzEssLD8g0sQby54GQ/exec";
+const APPS_SCRIPT_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbxsS_tT4yD5aM1MSwpTrsMAMSnaptVaKHe8HkFXd1GGJwbcfGe9AWyK2DNZJqcSlt-C/exec";
 
 /* === 전역 상태 === */
 let currentDisplayDate = new Date();
@@ -12,13 +12,14 @@ let incomeSourcesData = [];
 let currentEditingTransaction = null;
 
 /* === API 호출 헬퍼 함수 === */
-async function callAppsScriptApi(actionName, params = {}) {
+// [수정] GET 방식 호출 함수 (이름 명확화)
+async function callAppsScriptApiGet(actionName, params = {}) {
   const url = new URL(APPS_SCRIPT_API_ENDPOINT);
   url.searchParams.append('action', actionName);
   for (const key in params) {
     url.searchParams.append(key, params[key]);
   }
-  console.log(`[API] Calling: ${actionName}`);
+  console.log(`[API-GET] Calling: ${actionName}`);
   try {
     const response = await fetch(url.toString());
     if (!response.ok) throw new Error(`서버 응답 오류 (${response.status})`);
@@ -26,11 +27,38 @@ async function callAppsScriptApi(actionName, params = {}) {
     if (result.success === false) throw new Error(result.error || `"${actionName}" API 요청 실패`);
     return result;
   } catch (error) {
-    console.error(`[API] Error calling action "${actionName}":`, error);
+    console.error(`[API-GET] Error calling action "${actionName}":`, error);
     showToast(`API 요청 중 오류: ${error.message}`, true);
-    throw error; 
+    throw error;
   }
 }
+
+// [추가] POST 방식 호출 함수
+async function callAppsScriptApiPost(actionName, data = {}) {
+  const payload = {
+    action: actionName,
+    data: data,
+  };
+  console.log(`[API-POST] Calling: ${actionName}`);
+  try {
+    const response = await fetch(APPS_SCRIPT_API_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(`서버 응답 오류 (${response.status})`);
+    const result = await response.json();
+    if (result.success === false) throw new Error(result.error || `"${actionName}" API 요청 실패`);
+    return result;
+  } catch (error) {
+    console.error(`[API-POST] Error calling action "${actionName}":`, error);
+    showToast(`API 요청 중 오류: ${error.message}`, true);
+    throw error;
+  }
+}
+
 
 /* === 뷰포트 높이 설정 === */
 function setViewportHeightVar(){
@@ -110,7 +138,8 @@ async function updateCalendarDisplay () {
   if (!renderedFromCache) renderCalendarAndSummary([]);
 
   try {
-    const result = await callAppsScriptApi('getTransactions', { cycleMonth: currentCycleMonth });
+    // [수정] GET 함수 호출
+    const result = await callAppsScriptApiGet('getTransactions', { cycleMonth: currentCycleMonth });
     const finalTx = result.data || [];
     localStorage.setItem(cacheKey, JSON.stringify(finalTx));
     if (!renderedFromCache || JSON.stringify(transactionsToRender) !== JSON.stringify(finalTx)) {
@@ -185,7 +214,8 @@ function updateSummary(transactions){
 }
 
 async function loadInitialData() {
-  const result = await callAppsScriptApi('getAppSetupData');
+  // [수정] GET 함수 호출
+  const result = await callAppsScriptApiGet('getAppSetupData');
   if (result.success) {
     expenseCategoriesData = result.expenseCategories || {};
     paymentMethodsData = result.paymentMethods || [];
@@ -212,7 +242,8 @@ async function handleSearch() {
   resultsContainer.innerHTML = '';
   resultsContainer.style.display = 'block';
   try {
-    const result = await callAppsScriptApi('searchTransactions', { keyword });
+    // [수정] GET 함수 호출
+    const result = await callAppsScriptApiGet('searchTransactions', { keyword });
     displaySearchResults(result.data, keyword);
   } catch (error) {
     resultsContainer.innerHTML = `<p>검색 중 오류가 발생했습니다: ${error.message}</p>`;
@@ -277,23 +308,39 @@ function showView(id){
   if(id === 'cardView') displayCardData();
 }
 
+// [수정] handleTransactionSubmit 함수: POST 방식 사용
 async function handleTransactionSubmit(e) {
   e.preventDefault();
   const form = e.target;
   const transactionData = Object.fromEntries(new FormData(form).entries());
   if (!validateTransactionData(transactionData)) return;
+
   const isEditing = currentEditingTransaction && typeof currentEditingTransaction.row !== 'undefined';
-  if (isEditing) transactionData.id_to_update = currentEditingTransaction.row;
+  if (isEditing) {
+    transactionData.id_to_update = currentEditingTransaction.row;
+  }
+
   const loader = document.getElementById('loader');
   if (loader) loader.style.display = 'block';
   closeModal();
   showToast(isEditing ? '수정 중...' : '저장 중...');
+  
   const action = isEditing ? 'updateTransaction' : 'addTransaction';
+
   try {
-    const result = await callAppsScriptApi(action, { transactionDataString: JSON.stringify(transactionData) });
+    // POST 함수 호출로 변경. transactionData 객체를 직접 전달
+    const result = await callAppsScriptApiPost(action, transactionData);
     if (result.success) {
       showToast(result.message || (isEditing ? '수정 완료!' : '저장 완료!'), false);
-      await updateCalendarDisplay(); 
+      // 성공 시, 해당하는 달의 로컬 캐시를 삭제하여 새로고침 되도록 함
+      const date = new Date(transactionData.date);
+      const cycleYear = date.getFullYear();
+      const cycleMonthIndex = date.getDate() < 18 ? date.getMonth() - 1 : date.getMonth();
+      const cycleDate = new Date(cycleYear, cycleMonthIndex, 1);
+      const cycleMonthKey = `${cycleDate.getFullYear()}-${String(cycleDate.getMonth() + 1).padStart(2, '0')}`;
+      localStorage.removeItem('transactions_' + cycleMonthKey);
+      
+      await updateCalendarDisplay(); // 달력 즉시 업데이트
     } else { throw new Error(result.error); }
   } catch (error) { 
     showToast((isEditing ? '수정 실패: ' : '저장 실패: ') + error.message, true);
@@ -302,6 +349,7 @@ async function handleTransactionSubmit(e) {
   }
 }
 
+// [수정] handleDelete 함수: POST 방식 사용
 async function handleDelete() {
   if (!currentEditingTransaction || !confirm('정말로 삭제하시겠습니까?')) return;
   const rowId = currentEditingTransaction.row; 
@@ -309,10 +357,13 @@ async function handleDelete() {
   if (loader) loader.style.display = 'block';
   closeModal();
   showToast('삭제 중...');
+  
   try {
-    const result = await callAppsScriptApi('deleteTransaction', { id_to_delete: Number(rowId) }); 
+    // POST 함수 호출로 변경. 삭제할 ID를 data 객체에 담아 전달
+    const result = await callAppsScriptApiPost('deleteTransaction', { id_to_delete: Number(rowId) }); 
     if (result.success) {
       showToast(result.message || '삭제 완료!', false);
+      localStorage.removeItem('transactions_' + currentCycleMonth); // 현재 달 캐시 삭제
       await updateCalendarDisplay(); 
     } else { throw new Error(result.error); }
   } catch (error) {
@@ -322,12 +373,13 @@ async function handleDelete() {
   }
 }
 
+
 function validateTransactionData(data) {
   if (!data.date || !data.amount || !data.content) {
     showToast("날짜, 금액, 내용은 필수입니다.", true); return false;
   }
-  if (data.type === '지출' && (!data.paymentMethod || !data.mainCategory || !data.subCategory)) {
-    showToast("지출 시 결제수단과 카테고리는 필수입니다.", true); return false;
+  if (data.type === '지출' && (!data.paymentMethod || !data.mainCategory)) { // 하위 카테고리는 필수가 아닐 수 있음
+    showToast("지출 시 결제수단과 주 카테고리는 필수입니다.", true); return false;
   }
   if (data.type === '수입' && !data.incomeSource) {
     showToast("수입 시 수입원은 필수입니다.", true); return false;
@@ -430,7 +482,8 @@ async function loadDailyTransactions(dateStr) {
   if (!list) return;
   list.textContent = '불러오는 중...';
   try {
-    const result = await callAppsScriptApi('getTransactionsByDate', { date: dateStr });
+    // [수정] GET 함수 호출
+    const result = await callAppsScriptApiGet('getTransactionsByDate', { date: dateStr });
     displayDailyTransactions(result.data || []);
   } catch (error) {
     if (list) list.textContent = '일일 거래 내역 로딩 실패.';
@@ -474,7 +527,9 @@ function populateFormForEdit(transaction) {
     const mainCategorySelect = document.getElementById('mainCategory');
     mainCategorySelect.value = transaction.category1 || ''; 
     updateSubCategories(); 
-    document.getElementById('subCategory').value = transaction.category2 || '';
+    setTimeout(() => { // DOM 업데이트 시간을 줌
+        document.getElementById('subCategory').value = transaction.category2 || '';
+    }, 0);
   } else if (transaction.type === '수입') {
     document.getElementById('incomeSource').value = transaction.category1 || ''; 
   }
@@ -527,10 +582,11 @@ async function displayCardData() {
   lbl.textContent = `${perfMonth} 기준`;
 
   try {
-    const result = await callAppsScriptApi('getCardData', { cardName: card, cycleMonthForBilling: currentCycleMonth, performanceReferenceMonth: perfMonth });
-    const d = result.data;
-    if (!result.success || !d) throw new Error(result.error || '카드 데이터 구조 오류');
-    const { billingCycleMonthForCard, performanceReferenceMonthForDisplay, billingAmount, performanceAmount, performanceTarget, cardName } = d;
+    // [수정] GET 함수 호출
+    const result = await callAppsScriptApiGet('getCardData', { cardName: card, cycleMonthForBilling: currentCycleMonth, performanceReferenceMonth: perfMonth });
+    if (!result.success) throw new Error(result.error || '카드 데이터 구조 오류');
+    
+    const { billingCycleMonthForCard, performanceReferenceMonthForDisplay, billingAmount, performanceAmount, performanceTarget, cardName } = result; // data 객체 없이 바로 구조분해
     const rate = Number(performanceTarget) > 0 ? ((Number(performanceAmount)/Number(performanceTarget))*100).toFixed(1)+'%' : '0%';
     det.innerHTML = `<h4>${cardName || card}</h4> <p><strong>청구 기준월:</strong> ${billingCycleMonthForCard}</p> <p><strong>청구 예정 금액:</strong> ${Number(billingAmount).toLocaleString()}원</p><hr> <p><strong>실적 산정월:</strong> ${performanceReferenceMonthForDisplay}</p> <p><strong>현재 사용액(실적):</strong> ${Number(performanceAmount).toLocaleString()}원</p> <p><strong>실적 목표 금액:</strong> ${Number(performanceTarget).toLocaleString()}원</p> <p><strong>달성률:</strong> ${rate}</p> <p style="font-size:0.8em;color:grey;">(실적은 카드사의 실제 집계와 다를 수 있습니다)</p>`;
   } catch (error) {
@@ -539,6 +595,3 @@ async function displayCardData() {
     if(loader) loader.style.display = 'none';
   }
 }
-
-
-
