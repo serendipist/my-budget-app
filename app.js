@@ -78,7 +78,8 @@ window.onload = async () => {
   }
   showView('calendarView');
   toggleTypeSpecificFields();
-  document.getElementById('transactionModal')?.style.display = 'none';
+  const transactionModal = document.getElementById('transactionModal');
+    if (transactionModal) transactionModal.style.display = 'none';
   registerServiceWorker();
 };
 
@@ -712,5 +713,6 @@ function openTransactionModalForEdit(transactionData) {
     // 모달을 표시합니다.
     document.getElementById('transactionModal').style.display = 'flex';
 }
+
 
 
