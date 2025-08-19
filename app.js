@@ -1,5 +1,5 @@
 // app.js - 최종 수정본 (문법 오류 수정)
-const APPS_SCRIPT_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbzjP671pu6MMLKhmTXHwqCu-wci-Y-RM0Sl5TlQO0HmGsyrH83DBj6dsh62LqHIf-YD/exec";
+const APPS_SCRIPT_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbzfBYh9cmtHXtEUE8wseB5KHy8Ltbi58moew1ky6Bya-FY94cyvlQrilVIeN3Ex8QDO/exec";
 
 /* === 전역 상태 === */
 let currentDisplayDate = new Date();
@@ -713,6 +713,7 @@ function openTransactionModalForEdit(transactionData) {
     // 모달을 표시합니다.
     document.getElementById('transactionModal').style.display = 'flex';
 }
+
 
 
 
