@@ -2,7 +2,9 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <link rel="icon" href="favicon.png" type="image/png"> <link rel="apple-touch-icon" href="icons/icon-192.png"> <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
   <link rel="manifest" href="manifest.json">
   <title>나의 스마트 가계부</title>
 </head>
@@ -11,6 +13,12 @@
     <div class="tab-navigation">
       <button class="tab-button active" onclick="showView('calendarView')">달력</button>
       <button class="tab-button" onclick="showView('cardView')">카드</button>
+    </div>
+
+    <!-- 검색 UI 추가 -->
+    <div class="search-container">
+      <input type="search" id="searchInput" placeholder="거래 내용으로 검색...">
+      <button id="searchButton" aria-label="Search">🔍</button>
     </div>
 
     <div id="calendarView" class="tab-content active">
@@ -45,6 +53,12 @@
         <div id="cardDetails" style="margin-top:20px;"><p>카드를 선택해주세요.</p></div>
       </div>
     </div>
+    
+    <!-- 검색 결과 표시 영역 추가 -->
+    <div id="searchResultView" class="tab-content">
+      <!-- JavaScript가 이 안에 검색 결과를 채울 것입니다. -->
+    </div>
+
   </div>
 
   <div id="transactionModal" class="modal">
@@ -104,7 +118,7 @@
           <label for="incomeSource">수입원:</label>
           <select id="incomeSource" name="incomeSource"></select>
         </div>
-        <!-- 저장 / 삭제 버튼 -->
+        
         <div style="display:flex; gap:8px; margin-top:25px;">
           <button type="button" id="deleteBtn" class="modal-action-btn"
                   style="background:#dc3545; display:none;" 
