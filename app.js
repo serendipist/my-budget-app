@@ -60,7 +60,7 @@ window.onload = async () => {
   console.log("[App.js] window.onload triggered");
   determineInitialCycleMonth();
   setupEventListeners();
-  
+ 
   const loader = document.getElementById('loader');
   if(loader) loader.style.display = 'block';
 
@@ -91,7 +91,6 @@ function setupEventListeners() {
   document.getElementById('transactionForm').addEventListener('submit', handleTransactionSubmit);
   document.getElementById('mainCategory').addEventListener('change', updateSubCategories);
   setupSwipeListeners(); 
-  // ▼▼▼ [추가됨] 검색 버튼에 이벤트 리스너 연결 ▼▼▼
   document.getElementById('searchBtn').addEventListener('click', handleSearch);
 }
 
@@ -124,9 +123,9 @@ async function updateCalendarDisplay () {
 
   console.log('[App.js] updateCalendarDisplay →', currentCycleMonth);
 
-  const cacheKey            = 'transactions_' + currentCycleMonth;
-  const cachedDataString    = localStorage.getItem(cacheKey);
-  let   renderedFromCache   = false;
+  const cacheKey           = 'transactions_' + currentCycleMonth;
+  const cachedDataString   = localStorage.getItem(cacheKey);
+  let   renderedFromCache    = false;
   let   transactionsToRender = [];
 
   if (cachedDataString) {
@@ -153,10 +152,10 @@ async function updateCalendarDisplay () {
 
   try {
     const latest = await callAppsScriptApi('getTransactions',
-                                           { cycleMonth: currentCycleMonth });
+                                          { cycleMonth: currentCycleMonth });
 
     const finalTx = (latest && Array.isArray(latest)) ? latest : [];
-    
+   
     if (renderedFromCache && finalTx.length === 0) {
       console.warn('[App.js] API empty → keep cached view');
       return;
@@ -348,7 +347,7 @@ async function handleSearch() {
 }
 
 /**
- * 검색 결과를 받아 화면에 목록 형태로 그려주는 함수
+ * ▼▼▼ [수정됨] 검색 결과를 받아 화면에 목록 형태로 그려주는 함수 ▼▼▼
  * @param {Array<Object>} transactions - 검색된 거래 내역 객체 배열
  */
 function renderSearchResults(transactions) {
@@ -369,53 +368,32 @@ function renderSearchResults(transactions) {
 
   const fragment = document.createDocumentFragment();
   transactions.forEach(t => {
+    // displayDailyTransactions의 로직과 동일하게 요소를 생성합니다.
+    if (!t || typeof t.type === 'undefined') return;
+
     const item = document.createElement('div');
-    item.className = `transaction-item search-result-item ${t.type === '수입' ? 'income' : 'expense'}`;
+    item.className = `transaction-item ${t.type === '수입' ? 'income' : 'expense'}`;
     
-    // 거래 내역의 상세 정보를 담을 컨테이너
-    const details = document.createElement('div');
-    details.className = 'result-details';
+    // 날짜 정보를 앞에 추가
+    let txt = `[${t.date}] [${t.type}] ${t.content || '(내용 없음)'}: ${Number(t.amount || 0).toLocaleString()}원`;
 
-    const line1 = document.createElement('div');
-    line1.className = 'result-line1';
-    
-    const dateSpan = document.createElement('span');
-    dateSpan.className = 'result-date';
-    dateSpan.textContent = t.date || '날짜 없음';
-    
-    const contentSpan = document.createElement('span');
-    contentSpan.className = 'result-content';
-    contentSpan.textContent = t.content || '내용 없음';
-
-    line1.appendChild(dateSpan);
-    line1.appendChild(contentSpan);
-
-    const line2 = document.createElement('div');
-    line2.className = 'result-line2';
-    
-    const categorySpan = document.createElement('span');
-    categorySpan.className = 'result-category';
-    let categoryText = '';
     if (t.type === '지출') {
-      categoryText = `${t.category1 || ''}${t.category2 ? ` / ${t.category2}` : ''} (${t.paymentMethod || '미지정'})`;
+        if (t.paymentMethod) txt += ` (${t.paymentMethod})`;
+        if (t.category1) txt += ` - ${t.category1}`;
+        if (t.category2) txt += ` / ${t.category2}`;
     } else { // 수입
-      categoryText = t.category1 || '미지정 수입원';
+        if (t.category1) txt += ` - ${t.category1}`;
     }
-    categorySpan.textContent = categoryText;
     
-    line2.appendChild(categorySpan);
+    item.textContent = txt;
+    item.style.cursor = 'pointer';
+    item.title = '클릭하여 이 내용 수정하기';
 
-    details.appendChild(line1);
-    details.appendChild(line2);
-
-    // 금액 정보
-    const amountSpan = document.createElement('span');
-    amountSpan.className = 'result-amount';
-    amountSpan.textContent = `${Number(t.amount || 0).toLocaleString()}원`;
-
-    item.appendChild(details);
-    item.appendChild(amountSpan);
-    
+    // 클릭 시 수정 폼을 채우고 모달을 여는 이벤트 리스너를 추가합니다.
+    item.addEventListener('click', function() {
+      // populateFormForEdit 함수가 이제 모달을 직접 엽니다.
+      populateFormForEdit(t);
+    });
     fragment.appendChild(item);
   });
 
@@ -449,7 +427,7 @@ async function handleTransactionSubmit(e) {
   const action = isEditing ? 'updateTransaction' : 'addTransaction';
   try {
     const serverResult = await callAppsScriptApi(action, { transactionDataString: JSON.stringify(itemForServer) });
-    
+   
     if (serverResult.success) {
       showToast(serverResult.message || (isEditing ? '수정 완료!' : '저장 완료!'), false);
       await updateCalendarDisplay();
@@ -547,6 +525,10 @@ function displayDailyTransactions(arr, dateStr) {
   });
 }
 
+/**
+ * ▼▼▼ [수정됨] 폼에 수정할 거래내역 데이터를 채우고, 모달을 화면에 표시하는 함수 ▼▼▼
+ * @param {Object} transaction - 수정할 거래 내역 객체
+ */
 function populateFormForEdit(transaction) {
   if (!transaction || typeof transaction.row === 'undefined') {
     console.error('[populateFormForEdit] 유효하지 않은 거래 데이터입니다.', transaction);
@@ -582,6 +564,12 @@ function populateFormForEdit(transaction) {
   }
   const deleteBtn = document.getElementById('deleteBtn');
   if (deleteBtn) deleteBtn.style.display = 'block';
+
+  // [추가됨] 검색 결과에서 클릭 시 모달이 닫혀 있을 수 있으므로, 항상 열어줍니다.
+  // 또한, 다른 날짜의 거래내역이 보이는 것을 방지하기 위해 '거래 내역 보기' 섹션을 숨깁니다.
+  document.getElementById('dailyTransactions').style.display = 'none';
+  document.getElementById('toggleDailyTransactions').textContent = '거래 내역 보기';
+  document.getElementById('transactionModal').style.display = 'flex';
 }
 
 function showView(id){
@@ -717,4 +705,3 @@ function updateSubCategories() {
     });
   }
 }
-
