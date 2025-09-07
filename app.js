@@ -636,7 +636,7 @@ async function displayCardData() {
 
   const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
   const billingMonthForAPI = `${cardBillingCycleDate.getFullYear()}-${String(cardBillingCycleDate.getMonth()+1).padStart(2,'0')}`;
-  lbl.textContent = `${perfMonth} 실적 기준`;
+  lbl.textContent = `${billingMonthForDisplay} 주기 기준`;
 
   try {
     const d = await callAppsScriptApi('getCardData', { 
@@ -728,6 +728,7 @@ function updateSubCategories() {
     });
   }
 }
+
 
 
 
