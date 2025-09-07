@@ -18,7 +18,9 @@ async function callAppsScriptApi(actionName, params = {}) {
   const url = new URL(APPS_SCRIPT_API_ENDPOINT);
   url.searchParams.append('action', actionName);
   for (const key in params) {
-    url.searchParams.append(key, params[key]);
+    if (params[key]) { // 값이 있는 파라미터만 추가
+      url.searchParams.append(key, params[key]);
+    }
   }
 
   console.log(`[API] Calling: ${actionName} with params: ${JSON.stringify(params)}, URL: ${url.toString()}`);
@@ -44,7 +46,7 @@ async function callAppsScriptApi(actionName, params = {}) {
   }
 }
 
-/* === 뷰포트 높이 CSS 변수 갱신 (이전과 동일) === */
+/* === 뷰포트 높이 CSS 변수 갱신 === */
 function setViewportHeightVar(){
   const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
   document.documentElement.style.setProperty('--vh', `${h}px`);
@@ -52,14 +54,8 @@ function setViewportHeightVar(){
 ['load','resize','orientationchange'].forEach(evt => window.addEventListener(evt, setViewportHeightVar));
 setViewportHeightVar();
 
-function adjustCalendarHeight(){ /* 현재 사용 안 함 */ }
-function afterRender(){ setTimeout(adjustCalendarHeight, 0); } 
-['resize','orientationchange'].forEach(evt => {
-  setViewportHeightVar();
-  adjustCalendarHeight();
-});
 
-/* === 페이지 로드 순서 (이전과 동일) === */
+/* === 페이지 로드 순서 === */
 window.onload = async () => {
   console.log("[App.js] window.onload triggered");
   determineInitialCycleMonth();
@@ -90,6 +86,17 @@ window.onload = async () => {
   }
 };
 
+/* === 이벤트 리스너 설정 === */
+function setupEventListeners() {
+  document.getElementById('transactionForm').addEventListener('submit', handleTransactionSubmit);
+  document.getElementById('mainCategory').addEventListener('change', updateSubCategories);
+  setupSwipeListeners(); 
+  // ▼▼▼ [추가됨] 검색 버튼에 이벤트 리스너 연결 ▼▼▼
+  document.getElementById('searchBtn').addEventListener('click', handleSearch);
+}
+
+// (기존 함수들: determineInitialCycleMonth, changeMonth, updateCalendarDisplay, renderCalendarAndSummary, renderCalendar, updateSummary, loadInitialData 등... 수정 없이 그대로 유지)
+// ... 기존 함수들 생략 ...
 /* === 주기 계산 & 달력 (이전과 거의 동일, updateCalendarDisplay 호출 확인) === */
 function determineInitialCycleMonth(){ /* 이전과 동일 */
   const today = new Date();
@@ -117,7 +124,6 @@ async function updateCalendarDisplay () {
 
   console.log('[App.js] updateCalendarDisplay →', currentCycleMonth);
 
-  /* 1️⃣  캐시 우선 렌더링 ------------------------------------------------- */
   const cacheKey            = 'transactions_' + currentCycleMonth;
   const cachedDataString    = localStorage.getItem(cacheKey);
   let   renderedFromCache   = false;
@@ -140,25 +146,22 @@ async function updateCalendarDisplay () {
     }
   }
 
-  if (!renderedFromCache) {                        // 캐시 미존재 시 빈 달력
+  if (!renderedFromCache) {
     calendarBody.innerHTML = '';
     renderCalendarAndSummary([]);
   }
 
-  /* 2️⃣  네트워크 — stale-while-revalidate -------------------------------- */
   try {
     const latest = await callAppsScriptApi('getTransactions',
                                            { cycleMonth: currentCycleMonth });
 
     const finalTx = (latest && Array.isArray(latest)) ? latest : [];
-
-    /* ✨ PATCH: API가 빈 배열을 돌려줬지만 이미 캐시를 그렸다면 무시 */
+    
     if (renderedFromCache && finalTx.length === 0) {
       console.warn('[App.js] API empty → keep cached view');
-      return;                         // ⚠️ 아래 로직/캐시 덮어쓰기 모두 건너뜀
+      return;
     }
 
-    /* 3️⃣  캐시 갱신 + 필요 시 재렌더 ------------------------------------ */
     localStorage.setItem(cacheKey, JSON.stringify(finalTx));
 
     if (!renderedFromCache ||
@@ -177,7 +180,7 @@ async function updateCalendarDisplay () {
   }
 }
 
-function renderCalendarAndSummary(transactions){ /* 이전과 동일 */
+function renderCalendarAndSummary(transactions){
   if (!currentCycleMonth) { console.error("renderCalendarAndSummary: currentCycleMonth is not set."); return; }
   const parts = currentCycleMonth.split('-');
   if (parts.length < 2) { console.error("renderCalendarAndSummary: currentCycleMonth format is incorrect.", currentCycleMonth); return; }
@@ -191,40 +194,28 @@ function renderCalendarAndSummary(transactions){ /* 이전과 동일 */
 function renderCalendar(year, monthOneBased, transactions){
   const calendarBody = document.getElementById('calendarBody');
   calendarBody.innerHTML = '';
-
-  /* 날짜별 거래 배열 맵 */
   const transMap = {};
   (transactions||[]).forEach(t=>{
      if(t && t.date){ (transMap[t.date]=transMap[t.date]||[]).push(t); }
   });
-
   const cycleStart = new Date(year, monthOneBased-1, 18);
   const cycleEnd   = new Date(year, monthOneBased,   17);
   let cur = new Date(cycleStart);
   let weekRow = document.createElement('tr');
   const frag = document.createDocumentFragment();
-
-  /* 첫 주 공백 */
   for(let i=0;i<cycleStart.getDay();i++){
     const td=document.createElement('td'); td.className='other-month'; weekRow.appendChild(td);
   }
-
-  /* 날짜 루프 */
   while(cur<=cycleEnd){
     const td = document.createElement('td');
     const dStr = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
     td.dataset.date=dStr; td.onclick=()=>openModal(dStr);
-
-    /* 날짜 숫자 */
     const num = document.createElement('span');
     num.className='date-number';
     num.textContent=cur.getDate();
     td.appendChild(num);
-
-    /* ─ 새: 거래 미리보기 ─ */
     const wrap=document.createElement('div');
     wrap.className='txn-wrap';
-
     const list = transMap[dStr]||[];
     list.slice(0,4).forEach(t=>{
       const div=document.createElement('div');
@@ -236,16 +227,12 @@ function renderCalendar(year, monthOneBased, transactions){
       const more=document.createElement('div');
       more.className='more-link';
       more.textContent=`+${list.length-4}`;
-      more.onclick=e=>{ e.stopPropagation(); openModal(dStr);}   // td 클릭 전파 막기
+      more.onclick=e=>{ e.stopPropagation(); openModal(dStr);}
       wrap.appendChild(more);
     }
     td.appendChild(wrap);
-    /* ──────────────── */
-
     weekRow.appendChild(td);
-
     if(cur.getDay()===6 || cur.getTime()===cycleEnd.getTime()){
-      /* 마지막 주 빈칸 */
       if(cur.getTime()===cycleEnd.getTime() && cur.getDay()!==6){
         for(let i=cur.getDay()+1;i<=6;i++){
           const empty=document.createElement('td');
@@ -259,10 +246,9 @@ function renderCalendar(year, monthOneBased, transactions){
     cur.setDate(cur.getDate()+1);
   }
   calendarBody.appendChild(frag);
-  if(typeof afterRender==='function') afterRender();
 }
 
-function updateSummary(transactions){ /* 이전과 동일 */
+function updateSummary(transactions){
   let inc = 0, exp = 0;
   (transactions||[]).forEach(t => { if (t && typeof t.amount !== 'undefined') { const a = Number(t.amount)||0; if (t.type==='수입') inc += a; else exp += a; } });
   const bal = inc - exp;
@@ -273,7 +259,7 @@ function updateSummary(transactions){ /* 이전과 동일 */
   if (bal < 0) balEl.classList.add('negative');
 }
 
-async function loadInitialData() { /* 이전과 동일 */
+async function loadInitialData() {
   console.log("[App.js] loadInitialData: Fetching app setup data via API...");
   try {
     const setupData = await callAppsScriptApi('getAppSetupData', { initialCycleMonth: currentCycleMonth }); 
@@ -287,116 +273,159 @@ async function loadInitialData() { /* 이전과 동일 */
       }
       populateFormDropdowns(); 
       populateCardSelector();  
-      if (typeof showToast === 'function') showToast('앱 설정을 불러왔습니다.', false);
-    } else {
-      if (typeof showToast === 'function') showToast('앱 설정 데이터를 가져오지 못했습니다.', true);
     }
   } catch (error) {
     console.error('loadInitialData API call failed:', error);
   }
 }
 
-// ▒▒▒ 스와이프 제스처로 달력 월 변경 기능 ▒▒▒
 function setupSwipeListeners() {
-    const calendarElement = document.getElementById('calendarView'); // 스와이프를 감지할 주요 달력 영역 요소
+    const calendarElement = document.getElementById('calendarView');
     if (!calendarElement) {
         console.warn("[App.js] 스와이프 감지를 위한 달력 요소를 찾을 수 없습니다 ('calendarView').");
         return;
     }
-
     let touchstartX = 0;
     let touchendX = 0;
-    let touchstartY = 0; // 수직 스크롤과 구분하기 위함
+    let touchstartY = 0;
     let touchendY = 0;
-
-    const SWIPE_THRESHOLD = 50;      // 스와이프로 인정할 최소 수평 이동 거리 (px)
-    const SWIPE_MAX_VERTICAL = 75; // 수평 스와이프로 간주할 최대 수직 이동 거리 (px)
-                                   // 이 값보다 수직 이동이 크면 일반 스크롤로 간주하여 월 변경 안 함
-
+    const SWIPE_THRESHOLD = 50;
+    const SWIPE_MAX_VERTICAL = 75;
     calendarElement.addEventListener('touchstart', function(event) {
         touchstartX = event.changedTouches[0].screenX;
         touchstartY = event.changedTouches[0].screenY;
-    }, { passive: true }); // passive:true는 스크롤 성능 최적화를 위함 (preventDefault를 호출하지 않을 것이므로)
-
-    calendarElement.addEventListener('touchend', async function(event) { // changeMonth가 async이므로, 이 핸들러도 async
+    }, { passive: true });
+    calendarElement.addEventListener('touchend', async function(event) {
         touchendX = event.changedTouches[0].screenX;
         touchendY = event.changedTouches[0].screenY;
-        await handleSwipeGesture(); // 실제 스와이프 처리 함수 호출
-    }, false); // touchend는 일반적으로 passive:true와 큰 관계 없음
-
+        await handleSwipeGesture();
+    }, false);
     async function handleSwipeGesture() {
         const deltaX = touchendX - touchstartX;
         const deltaY = touchendY - touchstartY;
-
-        // 수평 이동 거리가 threshold보다 크고, 수직 이동은 maxVertical보다 작을 때만 스와이프로 처리
         if (Math.abs(deltaX) > SWIPE_THRESHOLD && Math.abs(deltaY) < SWIPE_MAX_VERTICAL) {
             if (deltaX > 0) {
-                // 오른쪽으로 스와이프 (손가락이 왼쪽에서 오른쪽으로 이동) -> 이전 달
                 console.log("[App.js] Swiped Right -> Previous Month");
-                await changeMonth(-1); // 기존 changeMonth 함수 사용
+                await changeMonth(-1);
             } else {
-                // 왼쪽으로 스와이프 (손가락이 오른쪽에서 왼쪽으로 이동) -> 다음 달
                 console.log("[App.js] Swiped Left -> Next Month");
-                await changeMonth(1);  // 기존 changeMonth 함수 사용
+                await changeMonth(1);
             }
         }
     }
 }
-// ▒▒▒ 스와이프 제스처 기능 끝 ▒▒▒
 
-function setupEventListeners() {
-  document.getElementById('transactionForm').addEventListener('submit', handleTransactionSubmit);
-  document.getElementById('mainCategory').addEventListener('change', updateSubCategories);
-  setupSwipeListeners(); 
-}
+// ... (기존 함수들 생략) ...
 
-function toggleTypeSpecificFields() { /* 이전과 동일 */
-  const typeRadio = document.querySelector('input[name="type"]:checked');
-  let type = '지출'; 
-  if (typeRadio) { type = typeRadio.value;
-  } else { const defaultExpenseRadio = document.querySelector('input[name="type"][value="지출"]');
-    if (defaultExpenseRadio) defaultExpenseRadio.checked = true;
+/* === 검색 기능 관련 함수들 === */
+
+/**
+ * '검색하기' 버튼 클릭 시 실행되는 메인 핸들러 함수
+ */
+async function handleSearch() {
+  const query = document.getElementById('searchInput').value.trim();
+  const startMonth = document.getElementById('startMonth').value; // YYYY-MM 형식
+  const endMonth = document.getElementById('endMonth').value;     // YYYY-MM 형식
+  const resultsDiv = document.getElementById('searchResults');
+  const loader = document.getElementById('loader');
+
+  resultsDiv.innerHTML = ''; // 이전 결과 초기화
+  if (loader) loader.style.display = 'block';
+  showToast('데이터를 검색 중입니다...');
+
+  try {
+    const searchParams = { query, startMonth, endMonth };
+    // 백엔드(Apps Script)에 'searchTransactions' 액션을 요청합니다.
+    const results = await callAppsScriptApi('searchTransactions', searchParams);
+    renderSearchResults(results); // 결과를 화면에 렌더링
+  } catch (error) {
+    console.error('Search failed:', error);
+    resultsDiv.innerHTML = `<p style="text-align: center; color: red;">검색 중 오류가 발생했습니다.</p>`;
+    showToast(`검색 오류: ${error.message}`, true);
+  } finally {
+    if (loader) loader.style.display = 'none';
   }
-  document.getElementById('expenseSpecificFields').style.display = type === '지출' ? 'block' : 'none';
-  document.getElementById('incomeSpecificFields').style.display  = type === '수입' ? 'block' : 'none';
 }
 
-function populateFormDropdowns() { /* 이전과 동일 */
-  const pm = document.getElementById('paymentMethod');
-  pm.innerHTML = '<option value="">선택하세요</option>';
-  (paymentMethodsData||[]).forEach(m=>{ const o=document.createElement('option'); o.value=m.name; o.textContent=m.name; pm.appendChild(o); });
-  const mainSel = document.getElementById('mainCategory');
-  mainSel.innerHTML = '<option value="">선택하세요</option>';
-  for (const k in expenseCategoriesData) { const o=document.createElement('option'); o.value=k; o.textContent=k; mainSel.appendChild(o); }
-  updateSubCategories(); 
-  const incSel = document.getElementById('incomeSource');
-  incSel.innerHTML='<option value="">선택하세요</option>';
-  (incomeSourcesData||[]).forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; incSel.appendChild(o); });
-}
+/**
+ * 검색 결과를 받아 화면에 목록 형태로 그려주는 함수
+ * @param {Array<Object>} transactions - 검색된 거래 내역 객체 배열
+ */
+function renderSearchResults(transactions) {
+  const resultsDiv = document.getElementById('searchResults');
+  resultsDiv.innerHTML = ''; // 이전 결과 초기화
 
-function updateSubCategories() { /* 이전과 동일 (콘솔 로그 포함된 버전) */
-  const mainCategorySelect = document.getElementById('mainCategory');
-  const subCategorySelect = document.getElementById('subCategory');
-  if (!mainCategorySelect || !subCategorySelect) {
-    console.warn('[updateSubCategories] 주 또는 하위 카테고리 Select 요소를 찾을 수 없습니다.');
+  if (!transactions || !Array.isArray(transactions) || transactions.length === 0) {
+    resultsDiv.innerHTML = '<p style="text-align: center; color: #888;">검색 결과가 없습니다.</p>';
     return;
   }
-  const mainCategoryValue = mainCategorySelect.value;
-  console.log(`[updateSubCategories] 주 카테고리 값 '${mainCategoryValue}' 기준으로 하위 목록 업데이트 시작.`);
-  subCategorySelect.innerHTML = '<option value="">선택하세요</option>'; 
-  if (expenseCategoriesData && expenseCategoriesData[mainCategoryValue] && Array.isArray(expenseCategoriesData[mainCategoryValue])) {
-    expenseCategoriesData[mainCategoryValue].forEach(subCat => {
-      const option = document.createElement('option');
-      option.value = subCat; option.textContent = subCat;
-      subCategorySelect.appendChild(option);
-    });
-    console.log(`[updateSubCategories] '${mainCategoryValue}'에 대한 하위 카테고리 (${expenseCategoriesData[mainCategoryValue].length}개) 목록 생성 완료.`);
-  } else {
-    console.log(`[updateSubCategories] 주 카테고리 '${mainCategoryValue}'에 대한 하위 카테고리 데이터가 없습니다.`);
-  }
+
+  // 검색 결과 요약 정보 추가
+  const summary = document.createElement('p');
+  summary.style.textAlign = 'center';
+  summary.style.marginBottom = '20px';
+  summary.innerHTML = `<strong>총 ${transactions.length}건</strong>의 거래 내역을 찾았습니다.`;
+  resultsDiv.appendChild(summary);
+
+  const fragment = document.createDocumentFragment();
+  transactions.forEach(t => {
+    const item = document.createElement('div');
+    item.className = `transaction-item search-result-item ${t.type === '수입' ? 'income' : 'expense'}`;
+    
+    // 거래 내역의 상세 정보를 담을 컨테이너
+    const details = document.createElement('div');
+    details.className = 'result-details';
+
+    const line1 = document.createElement('div');
+    line1.className = 'result-line1';
+    
+    const dateSpan = document.createElement('span');
+    dateSpan.className = 'result-date';
+    dateSpan.textContent = t.date || '날짜 없음';
+    
+    const contentSpan = document.createElement('span');
+    contentSpan.className = 'result-content';
+    contentSpan.textContent = t.content || '내용 없음';
+
+    line1.appendChild(dateSpan);
+    line1.appendChild(contentSpan);
+
+    const line2 = document.createElement('div');
+    line2.className = 'result-line2';
+    
+    const categorySpan = document.createElement('span');
+    categorySpan.className = 'result-category';
+    let categoryText = '';
+    if (t.type === '지출') {
+      categoryText = `${t.category1 || ''}${t.category2 ? ` / ${t.category2}` : ''} (${t.paymentMethod || '미지정'})`;
+    } else { // 수입
+      categoryText = t.category1 || '미지정 수입원';
+    }
+    categorySpan.textContent = categoryText;
+    
+    line2.appendChild(categorySpan);
+
+    details.appendChild(line1);
+    details.appendChild(line2);
+
+    // 금액 정보
+    const amountSpan = document.createElement('span');
+    amountSpan.className = 'result-amount';
+    amountSpan.textContent = `${Number(t.amount || 0).toLocaleString()}원`;
+
+    item.appendChild(details);
+    item.appendChild(amountSpan);
+    
+    fragment.appendChild(item);
+  });
+
+  resultsDiv.appendChild(fragment);
 }
 
-// ▼▼▼ [수정됨] 낙관적 업데이트(Optimistic Update) 제거 버전 ▼▼▼
+
+/* === 기존 모달 및 거래 처리 관련 함수들 === */
+// (handleTransactionSubmit, openModal, closeModal, populateFormForEdit 등... 수정 없이 그대로 유지)
+// ... 기존 함수들 생략 ...
 async function handleTransactionSubmit(e) {
   e.preventDefault();
   const form = e.target;
@@ -404,7 +433,7 @@ async function handleTransactionSubmit(e) {
   const transactionData = {};
   fd.forEach((v, k) => transactionData[k] = v);
 
-  if (!validateTransactionData(transactionData)) return; // 유효성 검사
+  if (!validateTransactionData(transactionData)) return;
 
   const isEditing = currentEditingTransaction && typeof currentEditingTransaction.row !== 'undefined';
   const itemForServer = { ...transactionData };
@@ -412,7 +441,6 @@ async function handleTransactionSubmit(e) {
     itemForServer.id_to_update = currentEditingTransaction.row;
   }
 
-  // 1. UI를 먼저 바꾸지 않고, 로딩 상태를 표시하고 모달을 닫습니다.
   const loader = document.getElementById('loader');
   if (loader) loader.style.display = 'block';
   showToast(isEditing ? '수정 사항을 전송 중입니다...' : '저장 중입니다...');
@@ -420,27 +448,21 @@ async function handleTransactionSubmit(e) {
 
   const action = isEditing ? 'updateTransaction' : 'addTransaction';
   try {
-    // 2. 서버에 API 요청을 보냅니다.
     const serverResult = await callAppsScriptApi(action, { transactionDataString: JSON.stringify(itemForServer) });
     
-    // 3. 서버로부터 성공 응답을 받으면,
     if (serverResult.success) {
       showToast(serverResult.message || (isEditing ? '수정 완료!' : '저장 완료!'), false);
-      // 4. 서버에서 최신 데이터를 다시 불러와 화면 전체를 갱신합니다.
       await updateCalendarDisplay();
     } else {
       throw new Error(serverResult.message || serverResult.error || '서버 작업 처리 실패');
     }
   } catch (error) {
-    // 5. 에러 발생 시, 에러 메시지를 표시합니다. UI를 되돌릴 필요가 없습니다 (바꾼 적이 없으므로).
     showToast((isEditing ? '수정 실패: ' : '저장 실패: ') + error.message, true);
   } finally {
-    // 6. 작업 완료 후 로딩 상태를 해제합니다.
     if (loader) loader.style.display = 'none';
   }
 }
 
-// validateTransactionData 헬퍼 함수 (handleTransactionSubmit 내부 로직 분리)
 function validateTransactionData(data) {
   if (!data.date || !data.amount || !data.content) {
     if (typeof showToast === 'function') showToast("날짜, 금액, 내용은 필수입니다.", true); 
@@ -457,8 +479,7 @@ function validateTransactionData(data) {
   return true;
 }
 
-
-async function openModal(dateStr) { /* 이전과 동일 */
+async function openModal(dateStr) {
   document.getElementById('transactionForm').reset();
   currentEditingTransaction = null; 
   document.getElementById('deleteBtn').style.display = 'none';
@@ -472,12 +493,12 @@ async function openModal(dateStr) { /* 이전과 동일 */
   await loadDailyTransactions(dateStr);
 }
 
-function closeModal(){ /* 이전과 동일 */
+function closeModal(){
   const transactionModal = document.getElementById('transactionModal');
   if (transactionModal) transactionModal.style.display='none'; 
 }
 
-function toggleDailyTransactionVisibility() { /* 이전과 동일 */
+function toggleDailyTransactionVisibility() {
   const dailySection = document.getElementById('dailyTransactions');
   const toggleBtn = document.getElementById('toggleDailyTransactions');
   const isHidden = dailySection.style.display === 'none';
@@ -493,7 +514,7 @@ function toggleDailyTransactionVisibility() { /* 이전과 동일 */
   }
 }
 
-async function loadDailyTransactions(dateStr) { /* 이전과 동일 (API 호출) */
+async function loadDailyTransactions(dateStr) {
   const list = document.getElementById('dailyTransactionList');
   if (!list) return;
   list.textContent = '불러오는 중...';
@@ -506,7 +527,7 @@ async function loadDailyTransactions(dateStr) { /* 이전과 동일 (API 호출)
   }
 }
 
-function displayDailyTransactions(arr, dateStr) { /* 이전과 동일 */
+function displayDailyTransactions(arr, dateStr) {
   const list = document.getElementById('dailyTransactionList');
   if (!list) return;
   if (arr && arr.error) { list.textContent = '내역 로딩 오류: ' + arr.error; return; }
@@ -526,71 +547,44 @@ function displayDailyTransactions(arr, dateStr) { /* 이전과 동일 */
   });
 }
 
-// ▼▼▼ 카테고리 수정 문제 해결을 위한 populateFormForEdit 최종 제안 ▼▼▼
 function populateFormForEdit(transaction) {
   if (!transaction || typeof transaction.row === 'undefined') {
     console.error('[populateFormForEdit] 유효하지 않은 거래 데이터입니다.', transaction);
     if (typeof showToast === 'function') showToast('거래 정보를 불러오지 못했습니다. (ID 누락)', true); 
     return;
   }
-  console.log('[populateFormForEdit] 수정할 거래 원본 데이터:', JSON.parse(JSON.stringify(transaction)));
   currentEditingTransaction = transaction; 
-  
   const form = document.getElementById('transactionForm');
   if (form) form.reset(); 
-  
   document.getElementById('modalTitle').textContent = '거래 수정';
-
   document.getElementById('transactionDate').value = transaction.date || '';
   document.getElementById('transactionAmount').value = transaction.amount || '';
   document.getElementById('transactionContent').value = transaction.content || '';
-
   document.querySelectorAll('input[name="type"]').forEach(r => {
     r.checked = (r.value === transaction.type);
   });
-  toggleTypeSpecificFields(); // ★ 유형에 따라 관련 필드 표시/숨김 (이 함수가 먼저 호출되어야 함)
-
+  toggleTypeSpecificFields();
   if (transaction.type === '지출') {
-    console.log('[populateFormForEdit] 지출 유형 필드 채우기 시작');
-    
     const paymentMethodSelect = document.getElementById('paymentMethod');
     if (paymentMethodSelect) paymentMethodSelect.value = transaction.paymentMethod || '';
-    
     const mainCategorySelect = document.getElementById('mainCategory');
     if (mainCategorySelect) {
-      // 주 카테고리 값을 먼저 설정합니다.
       mainCategorySelect.value = transaction.category1 || ''; 
-      console.log(`[populateFormForEdit] 주 카테고리(${mainCategorySelect.id})에 설정 시도: '${transaction.category1}', 실제 설정된 값: '${mainCategorySelect.value}'`);
-      
-      // 주 카테고리 값 설정 후, 해당 값 기준으로 하위 카테고리 목록을 '강제로' 업데이트합니다.
-      // 이렇게 하면 mainCategorySelect의 'change' 이벤트가 프로그래매틱하게 발생하지 않아도
-      // updateSubCategories가 현재 mainCategorySelect.value를 기준으로 실행됩니다.
       updateSubCategories(); 
-      
-      // 하위 카테고리 값을 설정합니다. updateSubCategories가 동기적으로 옵션을 변경한 후입니다.
       const subCategorySelect = document.getElementById('subCategory');
       if (subCategorySelect) {
         subCategorySelect.value = transaction.category2 || '';
-        console.log(`[populateFormForEdit] 하위 카테고리(${subCategorySelect.id})에 설정 시도: '${transaction.category2}', 실제 설정된 값: '${subCategorySelect.value}'`);
-        
-        if (transaction.category2 && subCategorySelect.value !== transaction.category2) {
-            console.warn(`[populateFormForEdit] 하위 카테고리 '${transaction.category2}' 설정 실패. 사용 가능한 옵션:`, Array.from(subCategorySelect.options).map(opt => opt.value));
-        }
       }
     }
   } else if (transaction.type === '수입') {
-    console.log('[populateFormForEdit] 수입 유형 필드 채우기 시작');
     const incomeSourceSelect = document.getElementById('incomeSource');
     if (incomeSourceSelect) incomeSourceSelect.value = transaction.category1 || ''; 
   }
-
   const deleteBtn = document.getElementById('deleteBtn');
   if (deleteBtn) deleteBtn.style.display = 'block';
 }
-// ▲▲▲ 여기까지 populateFormForEdit 최종 제안 ▲▲▲
 
-
-function showView(id){ /* 이전과 동일 */
+function showView(id){
   document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   document.querySelectorAll('.tab-button').forEach(b=>b.classList.remove('active'));
@@ -601,7 +595,7 @@ function showView(id){ /* 이전과 동일 */
   }
 }
 
-function showToast(msg,isErr=false){ /* 이전과 동일 */
+function showToast(msg,isErr=false){
   const t = document.getElementById('toast');
   if (!t) return;
   t.textContent = msg; t.style.backgroundColor = isErr ? '#dc3545' : '#28a745'; 
@@ -609,7 +603,7 @@ function showToast(msg,isErr=false){ /* 이전과 동일 */
   setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=> t.style.visibility = 'hidden', 500); }, 3000);
 }
 
-function populateCardSelector(){ /* 이전과 동일 */
+function populateCardSelector(){
   const sel = document.getElementById('cardSelector');
   if (!sel) return;
   const currentCard = sel.value; 
@@ -620,25 +614,22 @@ function populateCardSelector(){ /* 이전과 동일 */
   if (currentCard && sel.querySelector(`option[value="${currentCard}"]`)) { sel.value = currentCard; }
 }
 
-async function changeCardMonth(d){ /* 이전과 동일 */
+async function changeCardMonth(d){
   cardPerformanceMonthDate.setMonth(cardPerformanceMonthDate.getMonth()+d); 
   await displayCardData(); 
 }
 
-async function displayCardData() { /* 이전과 동일 (API 호출) */
+async function displayCardData() {
   const cardSel = document.getElementById('cardSelector');
   const det = document.getElementById('cardDetails');
   const lbl = document.getElementById('cardMonthLabel');
   const loader = document.getElementById('loader');
   if (!cardSel || !det || !lbl) return;
   const card = cardSel.value;
-
   if (!card){ det.innerHTML = '<p>카드를 선택해주세요.</p>'; lbl.textContent = ''; return; }
   if(loader) loader.style.display = 'block';
-
   const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
   lbl.textContent = `${perfMonth} 기준`;
-
   try {
     const d = await callAppsScriptApi('getCardData', { 
       cardName: card, cycleMonthForBilling: currentCycleMonth, performanceReferenceMonth: perfMonth 
@@ -662,37 +653,68 @@ async function displayCardData() { /* 이전과 동일 (API 호출) */
   }
 }
 
-// ▼▼▼ [수정됨] 낙관적 업데이트(Optimistic Update) 제거 버전 ▼▼▼
 async function handleDelete() {
   if (!currentEditingTransaction || typeof currentEditingTransaction.row === 'undefined') {
     showToast('삭제할 거래를 먼저 선택하거나, 유효한 거래가 아닙니다.', true);
     return;
   }
   const rowId = currentEditingTransaction.row;
-
-  // 1. UI를 먼저 바꾸지 않고, 로딩 상태를 표시하고 모달을 닫습니다.
   const loader = document.getElementById('loader');
   if (loader) loader.style.display = 'block';
   showToast('삭제를 서버에 전송 중입니다...');
   closeModal();
 
   try {
-    // 2. 서버에 API 요청을 보냅니다.
     const serverResult = await callAppsScriptApi('deleteTransaction', { id_to_delete: Number(rowId) });
-
-    // 3. 서버로부터 성공 응답을 받으면,
     if (serverResult.success) {
       showToast(serverResult.message || '삭제 완료!', false);
-      // 4. 서버에서 최신 데이터를 다시 불러와 화면 전체를 갱신합니다.
       await updateCalendarDisplay();
     } else {
       throw new Error(serverResult.message || serverResult.error || '서버에서 삭제 실패');
     }
   } catch (error) {
-    // 5. 에러 발생 시, 에러 메시지를 표시합니다. UI를 되돌릴 필요가 없습니다.
     showToast(`삭제 실패! (${error.message})`, true);
   } finally {
-    // 6. 작업 완료 후 로딩 상태를 해제합니다.
     if (loader) loader.style.display = 'none';
   }
 }
+function toggleTypeSpecificFields() { 
+  const typeRadio = document.querySelector('input[name="type"]:checked');
+  let type = '지출'; 
+  if (typeRadio) { type = typeRadio.value;
+  } else { const defaultExpenseRadio = document.querySelector('input[name="type"][value="지출"]');
+    if (defaultExpenseRadio) defaultExpenseRadio.checked = true;
+  }
+  document.getElementById('expenseSpecificFields').style.display = type === '지출' ? 'block' : 'none';
+  document.getElementById('incomeSpecificFields').style.display  = type === '수입' ? 'block' : 'none';
+}
+function populateFormDropdowns() { 
+  const pm = document.getElementById('paymentMethod');
+  pm.innerHTML = '<option value="">선택하세요</option>';
+  (paymentMethodsData||[]).forEach(m=>{ const o=document.createElement('option'); o.value=m.name; o.textContent=m.name; pm.appendChild(o); });
+  const mainSel = document.getElementById('mainCategory');
+  mainSel.innerHTML = '<option value="">선택하세요</option>';
+  for (const k in expenseCategoriesData) { const o=document.createElement('option'); o.value=k; o.textContent=k; mainSel.appendChild(o); }
+  updateSubCategories(); 
+  const incSel = document.getElementById('incomeSource');
+  incSel.innerHTML='<option value="">선택하세요</option>';
+  (incomeSourcesData||[]).forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; incSel.appendChild(o); });
+}
+function updateSubCategories() { 
+  const mainCategorySelect = document.getElementById('mainCategory');
+  const subCategorySelect = document.getElementById('subCategory');
+  if (!mainCategorySelect || !subCategorySelect) {
+    console.warn('[updateSubCategories] 주 또는 하위 카테고리 Select 요소를 찾을 수 없습니다.');
+    return;
+  }
+  const mainCategoryValue = mainCategorySelect.value;
+  subCategorySelect.innerHTML = '<option value="">선택하세요</option>'; 
+  if (expenseCategoriesData && expenseCategoriesData[mainCategoryValue] && Array.isArray(expenseCategoriesData[mainCategoryValue])) {
+    expenseCategoriesData[mainCategoryValue].forEach(subCat => {
+      const option = document.createElement('option');
+      option.value = subCat; option.textContent = subCat;
+      subCategorySelect.appendChild(option);
+    });
+  }
+}
+
