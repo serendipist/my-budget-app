@@ -664,23 +664,35 @@ async function handleDelete() {
     return;
   }
   const rowId = currentEditingTransaction.row;
-  const loader = document.getElementById('loader');
-  if (loader) loader.style.display = 'block';
-  showToast('삭제를 서버에 전송 중입니다...');
-  closeModal();
+  const isTemp = typeof rowId === 'string' && rowId.startsWith('temp-');
+  const key = 'transactions_' + currentCycleMonth;
+  const originalData = JSON.parse(localStorage.getItem(key) || '[]');
 
+  // 1. 화면 먼저 업데이트 (Optimistic Update)
+  const filteredData = originalData.filter(t => t && typeof t.row !== 'undefined' && t.row.toString() !== rowId.toString());
+  localStorage.setItem(key, JSON.stringify(filteredData));
+  renderCalendarAndSummary(filteredData);
+  closeModal();
+  showToast(isTemp ? '임시 입력을 삭제했습니다.' : '삭제를 서버에 전송 중...');
+
+  // 임시 데이터는 서버에 보낼 필요 없음
+  if (isTemp) return;
+
+  // 2. 서버에 실제 삭제 요청
   try {
     const serverResult = await callAppsScriptApi('deleteTransaction', { id_to_delete: Number(rowId) });
     if (serverResult.success) {
       showToast(serverResult.message || '삭제 완료!', false);
+      // 최종 데이터 동기화를 위해 한 번 더 업데이트
       await updateCalendarDisplay();
     } else {
       throw new Error(serverResult.message || serverResult.error || '서버에서 삭제 실패');
     }
   } catch (error) {
+    // 3. 실패 시 롤백
     showToast(`삭제 실패! (${error.message})`, true);
-  } finally {
-    if (loader) loader.style.display = 'none';
+    localStorage.setItem(key, JSON.stringify(originalData)); // 삭제 전 데이터로 복구
+    renderCalendarAndSummary(originalData); // 화면도 원래대로 복구
   }
 }
 function toggleTypeSpecificFields() { 
@@ -722,6 +734,7 @@ function updateSubCategories() {
     });
   }
 }
+
 
 
 
