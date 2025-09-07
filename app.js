@@ -208,6 +208,9 @@ function renderCalendar(year, monthOneBased, transactions){
   while(cur<=cycleEnd){
     const td = document.createElement('td');
     const dStr = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+    if (dStr === todayStr) {
+      td.classList.add('today');
+    }
     td.dataset.date=dStr; td.onclick=()=>openModal(dStr);
     const num = document.createElement('span');
     num.className='date-number';
@@ -705,3 +708,4 @@ function updateSubCategories() {
     });
   }
 }
+
