@@ -11,6 +11,7 @@
     <div class="tab-navigation">
       <button class="tab-button active" onclick="showView('calendarView')">달력</button>
       <button class="tab-button" onclick="showView('cardView')">카드</button>
+      <button class="tab-button" onclick="showView('searchView')">검색</button>
     </div>
 
     <div id="calendarView" class="tab-content active">
@@ -45,7 +46,30 @@
         <div id="cardDetails" style="margin-top:20px;"><p>카드를 선택해주세요.</p></div>
       </div>
     </div>
-  </div>
+    
+    <div id="searchView" class="tab-content">
+      <h2>거래 내역 검색</h2>
+      <div class="search-form" style="padding: 10px;">
+        <p style="margin-bottom: 5px;"><strong>검색어</strong></p>
+        <input type="text" id="searchInput" placeholder="내용, 카테고리 등 자유롭게 입력" style="width: 100%; box-sizing: border-box; margin-bottom: 15px;">
+
+        <p style="margin-bottom: 5px;"><strong>기간</strong> (미입력 시 전체 기간)</p>
+        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 20px;">
+          <input type="date" id="startDate" style="flex: 1;">
+          <span>~</span>
+          <input type="date" id="endDate" style="flex: 1;">
+        </div>
+        
+        <button type="button" id="searchBtn" class="modal-action-btn" style="width: 100%; background: #007bff;">검색하기</button>
+      </div>
+      
+      <hr style="margin: 25px 0; border: 0; border-top: 1px solid #eee;">
+
+      <div id="searchResults">
+        <p style="text-align: center; color: #888;">검색 버튼을 눌러 거래 내역을 찾아보세요.</p>
+        </div>
+    </div>
+    </div>
 
   <div id="transactionModal" class="modal">
     <div class="modal-content">
@@ -104,7 +128,6 @@
           <label for="incomeSource">수입원:</label>
           <select id="incomeSource" name="incomeSource"></select>
         </div>
-        <!-- 저장 / 삭제 버튼 -->
         <div style="display:flex; gap:8px; margin-top:25px;">
           <button type="button" id="deleteBtn" class="modal-action-btn"
                   style="background:#dc3545; display:none;" 
