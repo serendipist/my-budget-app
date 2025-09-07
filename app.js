@@ -628,23 +628,42 @@ async function displayCardData() {
   const card = cardSel.value;
   if (!card){ det.innerHTML = '<p>카드를 선택해주세요.</p>'; lbl.textContent = ''; return; }
   if(loader) loader.style.display = 'block';
-  const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
-  lbl.textContent = `${perfMonth} 기준`;
+
+  // ▼▼▼ [수정됨] 카드 뷰의 현재 월을 기준으로 청구/실적월을 모두 설정합니다. ▼▼▼
+  const cardViewMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
+  lbl.textContent = `${cardViewMonth} 기준`;
+
   try {
     const d = await callAppsScriptApi('getCardData', { 
-      cardName: card, cycleMonthForBilling: currentCycleMonth, performanceReferenceMonth: perfMonth 
+      cardName: card, 
+      cycleMonthForBilling: cardViewMonth,      // 기존 currentCycleMonth -> cardViewMonth
+      performanceReferenceMonth: cardViewMonth   // 기존 perfMonth -> cardViewMonth
     });
+    // ▲▲▲ [수정됨] API 호출 시 두 날짜 파라미터를 카드 뷰의 월로 통일합니다. ▲▲▲
+
     if (!d || d.success === false){
       det.innerHTML = `<p>${d && d.error ? d.error : '카드 데이터 로딩 중 오류가 발생했습니다.'}</p>`;
       throw new Error(d && d.error ? d.error : '카드 데이터 구조 오류 또는 API 실패');
     }
-    const billingMonth = d.billingCycleMonthForCard || currentCycleMonth;
-    const perfRefMonthDisplay = d.performanceReferenceMonthForDisplay || perfMonth;
+
+    // API 응답에 따라 표시될 월 정보를 변수로 정리합니다.
+    const billingMonth = d.billingCycleMonthForCard || cardViewMonth;
+    const perfRefMonthDisplay = d.performanceReferenceMonthForDisplay || cardViewMonth;
+    
     const billingAmt = Number(d.billingAmount) || 0;
     const perfAmt = Number(d.performanceAmount) || 0;
     const targetAmt = Number(d.performanceTarget) || 0;
     const rate = targetAmt > 0 ? ((perfAmt/targetAmt)*100).toFixed(1)+'%' : '0%';
-    det.innerHTML = `<h4>${d.cardName || card}</h4> <p><strong>청구 기준월:</strong> ${billingMonth} (18일~다음달 17일)</p> <p><strong>청구 예정 금액:</strong> ${billingAmt.toLocaleString()}원</p><hr> <p><strong>실적 산정월:</strong> ${perfRefMonthDisplay}</p> <p><strong>현재 사용액(실적):</strong> ${perfAmt.toLocaleString()}원</p> <p><strong>실적 목표 금액:</strong> ${targetAmt.toLocaleString()}원</p> <p><strong>달성률:</strong> ${rate}</p> <p style="font-size:0.8em;color:grey;">(실적은 카드사의 실제 집계와 다를 수 있습니다)</p>`;
+    
+    det.innerHTML = `<h4>${d.cardName || card}</h4> 
+      <p><strong>청구 기준월:</strong> ${billingMonth} (18일~다음달 17일)</p> 
+      <p><strong>청구 예정 금액:</strong> ${billingAmt.toLocaleString()}원</p><hr> 
+      <p><strong>실적 산정월:</strong> ${perfRefMonthDisplay}</p> 
+      <p><strong>현재 사용액(실적):</strong> ${perfAmt.toLocaleString()}원</p> 
+      <p><strong>실적 목표 금액:</strong> ${targetAmt.toLocaleString()}원</p> 
+      <p><strong>달성률:</strong> ${rate}</p> 
+      <p style="font-size:0.8em;color:grey;">(실적은 카드사의 실제 집계와 다를 수 있습니다)</p>`;
+      
   } catch (error) {
     det.innerHTML = '<p>카드 데이터를 불러오는 데 실패했습니다.</p>';
     console.error('displayCardData API call failed:', error);
@@ -717,5 +736,6 @@ function updateSubCategories() {
     });
   }
 }
+
 
 
