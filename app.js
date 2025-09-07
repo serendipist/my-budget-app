@@ -358,12 +358,15 @@ async function handleSearch() {
  * ▼▼▼ [수정됨] 검색 결과를 받아 화면에 목록 형태로 그려주는 함수 ▼▼▼
  * @param {Array<Object>} transactions - 검색된 거래 내역 객체 배열
  */
+// app.js 파일에서 이 함수를 찾아 교체해주세요.
+
 function renderSearchResults(transactions) {
   const resultsDiv = document.getElementById('searchResults');
-  resultsDiv.innerHTML = ''; // 이전 결과 초기화
+  resultsDiv.innerHTML = ''; 
 
   if (!transactions || !Array.isArray(transactions) || transactions.length === 0) {
     resultsDiv.innerHTML = '<p style="text-align: center; color: #888;">검색 결과가 없습니다.</p>';
+    showToast('일치하는 검색 결과가 없습니다.', true); // isErr=true 로 경고 스타일 알림 표시
     return;
   }
 
@@ -376,13 +379,11 @@ function renderSearchResults(transactions) {
 
   const fragment = document.createDocumentFragment();
   transactions.forEach(t => {
-    // displayDailyTransactions의 로직과 동일하게 요소를 생성합니다.
     if (!t || typeof t.type === 'undefined') return;
 
     const item = document.createElement('div');
     item.className = `transaction-item ${t.type === '수입' ? 'income' : 'expense'}`;
     
-    // 날짜 정보를 앞에 추가
     let txt = `[${t.date}] [${t.type}] ${t.content || '(내용 없음)'}: ${Number(t.amount || 0).toLocaleString()}원`;
 
     if (t.type === '지출') {
@@ -397,9 +398,7 @@ function renderSearchResults(transactions) {
     item.style.cursor = 'pointer';
     item.title = '클릭하여 이 내용 수정하기';
 
-    // 클릭 시 수정 폼을 채우고 모달을 여는 이벤트 리스너를 추가합니다.
     item.addEventListener('click', function() {
-      // populateFormForEdit 함수가 이제 모달을 직접 엽니다.
       populateFormForEdit(t);
     });
     fragment.appendChild(item);
@@ -631,7 +630,7 @@ async function displayCardData() {
 
   const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
   const billingMonthForAPI = `${cardBillingCycleDate.getFullYear()}-${String(cardBillingCycleDate.getMonth()+1).padStart(2,'0')}`;
-  lbl.textContent = `${billingMonthForDisplay} 주기 기준`;
+  lbl.textContent = `${billingMonthForAPI} 주기 기준`;
 
   try {
     const d = await callAppsScriptApi('getCardData', { 
@@ -723,6 +722,7 @@ function updateSubCategories() {
     });
   }
 }
+
 
 
 
