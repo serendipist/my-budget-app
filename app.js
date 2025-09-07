@@ -193,6 +193,11 @@ function renderCalendarAndSummary(transactions){
 function renderCalendar(year, monthOneBased, transactions){
   const calendarBody = document.getElementById('calendarBody');
   calendarBody.innerHTML = '';
+
+  // 오늘 날짜를 YYYY-MM-DD 형식의 문자열로 미리 만들어 둡니다.
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
   const transMap = {};
   (transactions||[]).forEach(t=>{
      if(t && t.date){ (transMap[t.date]=transMap[t.date]||[]).push(t); }
@@ -208,9 +213,13 @@ function renderCalendar(year, monthOneBased, transactions){
   while(cur<=cycleEnd){
     const td = document.createElement('td');
     const dStr = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+    
+    // ▼▼▼ [추가됨] 오늘 날짜와 일치하는지 확인하고 'today' 클래스를 추가합니다. ▼▼▼
     if (dStr === todayStr) {
       td.classList.add('today');
     }
+    // ▲▲▲ [추가됨] 여기까지 입니다. ▲▲▲
+
     td.dataset.date=dStr; td.onclick=()=>openModal(dStr);
     const num = document.createElement('span');
     num.className='date-number';
@@ -708,4 +717,5 @@ function updateSubCategories() {
     });
   }
 }
+
 
