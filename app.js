@@ -396,62 +396,47 @@ function updateSubCategories() { /* 이전과 동일 (콘솔 로그 포함된 �
   }
 }
 
-async function handleTransactionSubmit(e) { /* 이전과 동일 (API 호출 및 Optimistic Update) */
+// ▼▼▼ [수정됨] 낙관적 업데이트(Optimistic Update) 제거 버전 ▼▼▼
+async function handleTransactionSubmit(e) {
   e.preventDefault();
   const form = e.target;
   const fd = new FormData(form);
   const transactionData = {};
   fd.forEach((v, k) => transactionData[k] = v);
 
-  if (!validateTransactionData(transactionData)) return; // 유효성 검사 함수 호출
+  if (!validateTransactionData(transactionData)) return; // 유효성 검사
 
   const isEditing = currentEditingTransaction && typeof currentEditingTransaction.row !== 'undefined';
-  const originalData = JSON.parse(localStorage.getItem('transactions_' + currentCycleMonth) || '[]');
-  let optimisticData = JSON.parse(JSON.stringify(originalData)); 
-  const tempRowId = `temp-${Date.now()}`;
-  let itemForServer = { ...transactionData }; 
-
+  const itemForServer = { ...transactionData };
   if (isEditing) {
-    const index = optimisticData.findIndex(t => t && typeof t.row !== 'undefined' && t.row.toString() === currentEditingTransaction.row.toString());
-    if (index > -1) {
-      itemForServer.id_to_update = currentEditingTransaction.row; 
-      optimisticData[index] = { ...optimisticData[index], ...transactionData }; 
-      if (optimisticData[index].type === '수입') { 
-        optimisticData[index].category1 = transactionData.incomeSource || ''; 
-        optimisticData[index].category2 = '';
-      } else { 
-        optimisticData[index].category1 = transactionData.mainCategory || ''; 
-        optimisticData[index].category2 = transactionData.subCategory || '';
-      }
-    }
-  } else {
-    const newItemForUI = { ...transactionData, row: tempRowId };
-     if (newItemForUI.type === '수입') {
-        newItemForUI.category1 = transactionData.incomeSource || ''; newItemForUI.category2 = '';
-      } else { 
-        newItemForUI.category1 = transactionData.mainCategory || ''; newItemForUI.category2 = transactionData.subCategory || '';
-      }
-    optimisticData.push(newItemForUI);
+    itemForServer.id_to_update = currentEditingTransaction.row;
   }
-  
-  localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(optimisticData));
-  renderCalendarAndSummary(optimisticData);
-  if (typeof showToast === 'function') showToast(isEditing ? '수정 사항 전송 중...' : '저장 사항 전송 중...');
-  if (typeof closeModal === 'function') closeModal();
+
+  // 1. UI를 먼저 바꾸지 않고, 로딩 상태를 표시하고 모달을 닫습니다.
+  const loader = document.getElementById('loader');
+  if (loader) loader.style.display = 'block';
+  showToast(isEditing ? '수정 사항을 전송 중입니다...' : '저장 중입니다...');
+  closeModal();
 
   const action = isEditing ? 'updateTransaction' : 'addTransaction';
   try {
+    // 2. 서버에 API 요청을 보냅니다.
     const serverResult = await callAppsScriptApi(action, { transactionDataString: JSON.stringify(itemForServer) });
+    
+    // 3. 서버로부터 성공 응답을 받으면,
     if (serverResult.success) {
-      if (typeof showToast === 'function') showToast(serverResult.message || (isEditing ? '수정 완료!' : '저장 완료!'), false);
-      await updateCalendarDisplay(); 
-    } else { 
+      showToast(serverResult.message || (isEditing ? '수정 완료!' : '저장 완료!'), false);
+      // 4. 서버에서 최신 데이터를 다시 불러와 화면 전체를 갱신합니다.
+      await updateCalendarDisplay();
+    } else {
       throw new Error(serverResult.message || serverResult.error || '서버 작업 처리 실패');
     }
-  } catch (error) { 
-    if (typeof showToast === 'function') showToast((isEditing ? '수정 실패: ' : '저장 실패: ') + error.message, true);
-    localStorage.setItem('transactions_' + currentCycleMonth, JSON.stringify(originalData)); 
-    renderCalendarAndSummary(originalData);
+  } catch (error) {
+    // 5. 에러 발생 시, 에러 메시지를 표시합니다. UI를 되돌릴 필요가 없습니다 (바꾼 적이 없으므로).
+    showToast((isEditing ? '수정 실패: ' : '저장 실패: ') + error.message, true);
+  } finally {
+    // 6. 작업 완료 후 로딩 상태를 해제합니다.
+    if (loader) loader.style.display = 'none';
   }
 }
 
@@ -677,35 +662,37 @@ async function displayCardData() { /* 이전과 동일 (API 호출) */
   }
 }
 
-async function handleDelete() { /* 이전과 동일 (API 호출) */
+// ▼▼▼ [수정됨] 낙관적 업데이트(Optimistic Update) 제거 버전 ▼▼▼
+async function handleDelete() {
   if (!currentEditingTransaction || typeof currentEditingTransaction.row === 'undefined') {
-    showToast('삭제할 거래를 먼저 선택하거나, 유효한 거래가 아닙니다.', true); return;
+    showToast('삭제할 거래를 먼저 선택하거나, 유효한 거래가 아닙니다.', true);
+    return;
   }
-  const rowId = currentEditingTransaction.row; 
-  const isTemp = typeof rowId === 'string' && rowId.startsWith('temp-');
-  const key = 'transactions_' + currentCycleMonth;
-  const originalData = JSON.parse(localStorage.getItem(key) || '[]');
-  
-  const filteredData = originalData.filter(t => t && typeof t.row !== 'undefined' && t.row.toString() !== rowId.toString());
-  localStorage.setItem(key, JSON.stringify(filteredData));
-  renderCalendarAndSummary(filteredData);
-  closeModal();
-  showToast(isTemp ? '임시 입력을 삭제했습니다.' : '삭제를 서버에 전송 중...');
+  const rowId = currentEditingTransaction.row;
 
-  if (isTemp) return; 
+  // 1. UI를 먼저 바꾸지 않고, 로딩 상태를 표시하고 모달을 닫습니다.
+  const loader = document.getElementById('loader');
+  if (loader) loader.style.display = 'block';
+  showToast('삭제를 서버에 전송 중입니다...');
+  closeModal();
 
   try {
-    const serverResult = await callAppsScriptApi('deleteTransaction', { id_to_delete: Number(rowId) }); 
+    // 2. 서버에 API 요청을 보냅니다.
+    const serverResult = await callAppsScriptApi('deleteTransaction', { id_to_delete: Number(rowId) });
+
+    // 3. 서버로부터 성공 응답을 받으면,
     if (serverResult.success) {
       showToast(serverResult.message || '삭제 완료!', false);
-      await updateCalendarDisplay(); 
+      // 4. 서버에서 최신 데이터를 다시 불러와 화면 전체를 갱신합니다.
+      await updateCalendarDisplay();
     } else {
       throw new Error(serverResult.message || serverResult.error || '서버에서 삭제 실패');
     }
   } catch (error) {
+    // 5. 에러 발생 시, 에러 메시지를 표시합니다. UI를 되돌릴 필요가 없습니다.
     showToast(`삭제 실패! (${error.message})`, true);
-    localStorage.setItem(key, JSON.stringify(originalData)); 
-    renderCalendarAndSummary(originalData);
+  } finally {
+    // 6. 작업 완료 후 로딩 상태를 해제합니다.
+    if (loader) loader.style.display = 'none';
   }
 }
-
