@@ -492,3 +492,33 @@ body {
     font-size: 0.8rem; /* 모바일용 목록 글자 크기 */
   }
 }
+
+/* ================================================================== */
+/* ★★★ 검색 탭 컨트롤 (입력창, 버튼) 스타일 ★★★ */
+/* ================================================================== */
+
+/* 검색어, 시작월, 종료월 입력창에 대한 공통 스타일 */
+#searchInput, #startMonth, #endMonth {
+  padding: 8px 12px; /* 이 값을 조절해 세로 길이를 키울 수 있습니다. (위아래 8px, 좌우 12px) */
+  font-size: 1rem;   /* 내부 글자 크기 */
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  vertical-align: middle; /* 버튼과 세로 정렬을 맞추기 위함 */
+}
+
+/* '검색하기' 버튼 스타일 */
+#searchBtn {
+  padding: 8px 18px; /* 입력창과 세로 길이를 맞추기 위해 padding-top/bottom을 동일하게 설정 */
+  font-size: 1rem;
+  font-weight: bold;
+  color: #fff;
+  background-color: #007bff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+#searchBtn:hover {
+  background-color: #0056b3;
+}
