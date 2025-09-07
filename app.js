@@ -327,10 +327,6 @@ function setupSwipeListeners() {
     }
 }
 
-// ... (기존 함수들 생략) ...
-
-/* === 검색 기능 관련 함수들 === */
-
 /**
  * '검색하기' 버튼 클릭 시 실행되는 메인 핸들러 함수
  */
@@ -347,9 +343,8 @@ async function handleSearch() {
 
   try {
     const searchParams = { query, startMonth, endMonth };
-    // 백엔드(Apps Script)에 'searchTransactions' 액션을 요청합니다.
     const results = await callAppsScriptApi('searchTransactions', searchParams);
-    renderSearchResults(results); // 결과를 화면에 렌더링
+    renderSearchResults(results);
   } catch (error) {
     console.error('Search failed:', error);
     resultsDiv.innerHTML = `<p style="text-align: center; color: red;">검색 중 오류가 발생했습니다.</p>`;
@@ -728,6 +723,7 @@ function updateSubCategories() {
     });
   }
 }
+
 
 
 
