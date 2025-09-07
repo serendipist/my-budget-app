@@ -629,26 +629,24 @@ async function displayCardData() {
   if (!card){ det.innerHTML = '<p>카드를 선택해주세요.</p>'; lbl.textContent = ''; return; }
   if(loader) loader.style.display = 'block';
 
-  // ▼▼▼ [수정됨] 카드 뷰의 현재 월을 기준으로 청구/실적월을 모두 설정합니다. ▼▼▼
-  const cardViewMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
-  lbl.textContent = `${cardViewMonth} 기준`;
+  const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
+  lbl.textContent = `${perfMonth} 실적 기준`; // 라벨을 좀 더 명확하게 수정
 
   try {
     const d = await callAppsScriptApi('getCardData', { 
       cardName: card, 
-      cycleMonthForBilling: cardViewMonth,      // 기존 currentCycleMonth -> cardViewMonth
-      performanceReferenceMonth: cardViewMonth   // 기존 perfMonth -> cardViewMonth
+      cycleMonthForBilling: currentCycleMonth,      // 청구 기준월: 앱의 현재 주기를 고정값으로 사용
+      performanceReferenceMonth: perfMonth           // 실적 산정월: 카드 뷰에서 선택된 월을 사용
     });
-    // ▲▲▲ [수정됨] API 호출 시 두 날짜 파라미터를 카드 뷰의 월로 통일합니다. ▲▲▲
 
     if (!d || d.success === false){
       det.innerHTML = `<p>${d && d.error ? d.error : '카드 데이터 로딩 중 오류가 발생했습니다.'}</p>`;
       throw new Error(d && d.error ? d.error : '카드 데이터 구조 오류 또는 API 실패');
     }
-
-    // API 응답에 따라 표시될 월 정보를 변수로 정리합니다.
-    const billingMonth = d.billingCycleMonthForCard || cardViewMonth;
-    const perfRefMonthDisplay = d.performanceReferenceMonthForDisplay || cardViewMonth;
+    
+    // API 응답을 기반으로 화면에 표시될 월 정보를 최종 결정합니다.
+    const billingMonth = d.billingCycleMonthForCard || currentCycleMonth;
+    const perfRefMonthDisplay = d.performanceReferenceMonthForDisplay || perfMonth;
     
     const billingAmt = Number(d.billingAmount) || 0;
     const perfAmt = Number(d.performanceAmount) || 0;
@@ -671,7 +669,6 @@ async function displayCardData() {
     if(loader) loader.style.display = 'none';
   }
 }
-
 async function handleDelete() {
   if (!currentEditingTransaction || typeof currentEditingTransaction.row === 'undefined') {
     showToast('삭제할 거래를 먼저 선택하거나, 유효한 거래가 아닙니다.', true);
@@ -736,6 +733,7 @@ function updateSubCategories() {
     });
   }
 }
+
 
 
 
