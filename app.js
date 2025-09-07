@@ -8,6 +8,7 @@ const APPS_SCRIPT_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbxiR6w
 let currentDisplayDate = new Date();
 let currentCycleMonth = '';
 let cardPerformanceMonthDate = new Date();
+let cardBillingCycleDate = new Date()
 let expenseCategoriesData = {}; // loadInitialData를 통해 채워짐
 let paymentMethodsData = [];    // loadInitialData를 통해 채워짐
 let incomeSourcesData = [];     // loadInitialData를 통해 채워짐
@@ -589,8 +590,11 @@ function showView(id){
   document.getElementById(id).classList.add('active');
   document.querySelectorAll('.tab-button').forEach(b=>b.classList.remove('active'));
   document.querySelector(`.tab-button[onclick="showView('${id}')"]`).classList.add('active');
+  
   if(id==='cardView'){
     cardPerformanceMonthDate = new Date(); 
+    cardBillingCycleDate = new Date(currentDisplayDate); 
+    
     displayCardData();
   }
 }
@@ -616,6 +620,7 @@ function populateCardSelector(){
 
 async function changeCardMonth(d){
   cardPerformanceMonthDate.setMonth(cardPerformanceMonthDate.getMonth()+d); 
+  cardBillingCycleDate.setMonth(cardBillingCycleDate.getMonth()+d);
   await displayCardData(); 
 }
 
@@ -630,38 +635,27 @@ async function displayCardData() {
   if(loader) loader.style.display = 'block';
 
   const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
-  lbl.textContent = `${perfMonth} 실적 기준`; // 라벨을 좀 더 명확하게 수정
+  const billingMonthForAPI = `${cardBillingCycleDate.getFullYear()}-${String(cardBillingCycleDate.getMonth()+1).padStart(2,'0')}`;
+  lbl.textContent = `${perfMonth} 실적 기준`;
 
   try {
     const d = await callAppsScriptApi('getCardData', { 
       cardName: card, 
-      cycleMonthForBilling: currentCycleMonth,      // 청구 기준월: 앱의 현재 주기를 고정값으로 사용
-      performanceReferenceMonth: perfMonth           // 실적 산정월: 카드 뷰에서 선택된 월을 사용
+      cycleMonthForBilling: billingMonthForAPI, // 청구 기준월 전달
+      performanceReferenceMonth: perfMonth       // 실적 산정월 전달
     });
 
     if (!d || d.success === false){
       det.innerHTML = `<p>${d && d.error ? d.error : '카드 데이터 로딩 중 오류가 발생했습니다.'}</p>`;
       throw new Error(d && d.error ? d.error : '카드 데이터 구조 오류 또는 API 실패');
     }
-    
-    // API 응답을 기반으로 화면에 표시될 월 정보를 최종 결정합니다.
-    const billingMonth = d.billingCycleMonthForCard || currentCycleMonth;
+    const billingMonth = d.billingCycleMonthForCard || billingMonthForAPI;
     const perfRefMonthDisplay = d.performanceReferenceMonthForDisplay || perfMonth;
-    
     const billingAmt = Number(d.billingAmount) || 0;
     const perfAmt = Number(d.performanceAmount) || 0;
     const targetAmt = Number(d.performanceTarget) || 0;
     const rate = targetAmt > 0 ? ((perfAmt/targetAmt)*100).toFixed(1)+'%' : '0%';
-    
-    det.innerHTML = `<h4>${d.cardName || card}</h4> 
-      <p><strong>청구 기준월:</strong> ${billingMonth} (18일~다음달 17일)</p> 
-      <p><strong>청구 예정 금액:</strong> ${billingAmt.toLocaleString()}원</p><hr> 
-      <p><strong>실적 산정월:</strong> ${perfRefMonthDisplay}</p> 
-      <p><strong>현재 사용액(실적):</strong> ${perfAmt.toLocaleString()}원</p> 
-      <p><strong>실적 목표 금액:</strong> ${targetAmt.toLocaleString()}원</p> 
-      <p><strong>달성률:</strong> ${rate}</p> 
-      <p style="font-size:0.8em;color:grey;">(실적은 카드사의 실제 집계와 다를 수 있습니다)</p>`;
-      
+    det.innerHTML = `<h4>${d.cardName || card}</h4> <p><strong>청구 기준월:</strong> ${billingMonth} (18일~다음달 17일)</p> <p><strong>청구 예정 금액:</strong> ${billingAmt.toLocaleString()}원</p><hr> <p><strong>실적 산정월:</strong> ${perfRefMonthDisplay}</p> <p><strong>현재 사용액(실적):</strong> ${perfAmt.toLocaleString()}원</p> <p><strong>실적 목표 금액:</strong> ${targetAmt.toLocaleString()}원</p> <p><strong>달성률:</strong> ${rate}</p> <p style="font-size:0.8em;color:grey;">(실적은 카드사의 실제 집계와 다를 수 있습니다)</p>`;
   } catch (error) {
     det.innerHTML = '<p>카드 데이터를 불러오는 데 실패했습니다.</p>';
     console.error('displayCardData API call failed:', error);
@@ -669,6 +663,7 @@ async function displayCardData() {
     if(loader) loader.style.display = 'none';
   }
 }
+
 async function handleDelete() {
   if (!currentEditingTransaction || typeof currentEditingTransaction.row === 'undefined') {
     showToast('삭제할 거래를 먼저 선택하거나, 유효한 거래가 아닙니다.', true);
@@ -733,6 +728,7 @@ function updateSubCategories() {
     });
   }
 }
+
 
 
 
