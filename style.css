@@ -496,13 +496,43 @@ body {
 }
 
 /* ================================================================== */
+/* ★★★ 검색 탭 전용 스타일 ★★★ */
+/* ================================================================== */
+
+/* "총 00건의 거래 내역을 찾았습니다." 부분 */
+#searchResults p {
+  font-size: 1rem;
+  margin-top: 15px;
+  margin-bottom: 10px
+}
+
+/* 검색 결과 목록의 각 항목 (거래 내역 한 줄 한 줄) */
+#searchResults .transaction-item {
+  font-size: 1.0rem; /* 원하는 크기로 조절하세요. (e.g., 0.8rem, 14px) */
+  padding: 10px 8px; /* 위아래, 좌우 여백도 조절하면 좋습니다. */
+  margin-bottom: 7px; /* 항목 사이의 간격입니다. */
+}
+
+/* ------------------------------------------------------------------ */
+/* 모바일 화면(480px 이하)에서 검색 탭 글자 크기 조절 */
+@media (max-width: 480px) {
+  #searchResults p {
+    font-size: 0.9rem; /* 모바일용 요약 정보 크기 */
+  }
+
+  #searchResults .transaction-item {
+    font-size: 0.8rem; /* 모바일용 목록 글자 크기 */
+  }
+}
+
+/* ================================================================== */
 /* ★★★ 검색 탭 컨트롤 (입력창, 버튼) 스타일 ★★★ */
 /* ================================================================== */
 
 /* 검색어, 시작월, 종료월 입력창에 대한 공통 스타일 */
 #searchInput, #startMonth, #endMonth {
-  padding: 15px 18px; /* 이 부분을 기존 10px 12px에서 늘렸습니다. */
-  font-size: 1.25rem;   /* 이 부분도 기존 1.1rem에서 늘렸습니다. */
+  padding: 15px 18px;
+  font-size: 1.25rem;
   border: 1px solid #ccc;
   border-radius: 4px;
   vertical-align: middle;
@@ -511,8 +541,8 @@ body {
 
 /* '검색하기' 버튼 스타일 */
 #searchBtn {
-  padding: 15px 25px; /* 이 부분을 기존 10px 20px에서 늘렸습니다. */
-  font-size: 1.25rem; /* 이 부분도 기존 1.1rem에서 늘렸습니다. */
+  padding: 15px 25px;
+  font-size: 1.25rem;
   font-weight: bold;
   color: #fff;
   background-color: #007bff;
@@ -526,3 +556,15 @@ body {
   background-color: #0056b3;
 }
 
+/* ------------------------------------------------------------------ */
+/* 모바일 화면(480px 이하)에서 검색 탭 컨트롤 재정의 */
+@media (max-width: 480px) {
+  #searchInput, #startMonth, #endMonth {
+    padding: 12px 15px; /* 모바일에서 보기 좋게 재조정 */
+    font-size: 1rem;
+  }
+  #searchBtn {
+    padding: 12px 20px;
+    font-size: 1.1rem;
+  }
+}
