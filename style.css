@@ -501,28 +501,28 @@ body {
 
 /* 검색어, 시작월, 종료월 입력창에 대한 공통 스타일 */
 #searchInput, #startMonth, #endMonth {
-  padding: 10px 12px; /* 이 값을 조절해 세로 길이를 키울 수 있습니다. (위아래 8px, 좌우 12px) */
-  font-size: 1.1rem;   /* 내부 글자 크기 */
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  vertical-align: middle;
-  margin-bottom: 10px;
+  padding: 15px 18px; /* 변경: 세로 길이를 더 키웁니다. */
+  font-size: 1.25rem;   /* 변경: 내부 글자 크기를 더 키웁니다. */
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  vertical-align: middle;
+  margin-bottom: 10px;
 }
 
 /* '검색하기' 버튼 스타일 */
 #searchBtn {
-  padding: 10px 20px; /* 입력창과 세로 길이를 맞추기 위해 padding-top/bottom을 동일하게 설정 */
-  font-size: 1.1rem;
-  font-weight: bold;
-  color: #fff;
-  background-color: #007bff;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  vertical-align: middle;
+  padding: 15px 25px; /* 변경: 입력창과 세로 길이를 맞추고, 좌우 여백을 늘려 더 크게 만듭니다. */
+  font-size: 1.25rem; /* 변경: 내부 글자 크기를 더 키웁니다. */
+  font-weight: bold;
+  color: #fff;
+  background-color: #007bff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  vertical-align: middle;
 }
 
 #searchBtn:hover {
-  background-color: #0056b3;
+  background-color: #0056b3;
 }
 
