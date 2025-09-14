@@ -509,7 +509,7 @@ body {
 /* 검색 결과 목록의 각 항목 (거래 내역 한 줄 한 줄) */
 #searchResults .transaction-item {
   font-size: 1.0rem; /* 원하는 크기로 조절하세요. (e.g., 0.8rem, 14px) */
-  padding: 10px 8px; /* 위아래, 좌우 여백도 조절하면 좋습니다. */
+  padding: 12px 8px; /* 위아래, 좌우 여백도 조절하면 좋습니다. */
   margin-bottom: 7px; /* 항목 사이의 간격입니다. */
 }
 
@@ -531,40 +531,40 @@ body {
 
 /* 검색어, 시작월, 종료월 입력창에 대한 공통 스타일 */
 #searchInput, #startMonth, #endMonth {
-  padding: 15px 18px;
-  font-size: 1.25rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  vertical-align: middle;
-  margin-bottom: 10px;
+  padding: 30px 18px; /* 높이를 2배로 키움: 15px -> 30px */
+  font-size: 1.25rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  vertical-align: middle;
+  margin-bottom: 10px;
 }
 
 /* '검색하기' 버튼 스타일 */
 #searchBtn {
-  padding: 15px 25px;
-  font-size: 1.25rem;
-  font-weight: bold;
-  color: #fff;
-  background-color: #007bff;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  vertical-align: middle;
+  padding: 30px 25px; /* 입력창과 높이를 맞춤 */
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: #fff;
+  background-color: #007bff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  vertical-align: middle;
 }
 
 #searchBtn:hover {
-  background-color: #0056b3;
+  background-color: #0056b3;
 }
 
 /* ------------------------------------------------------------------ */
-/* 모바일 화면(480px 이하)에서 검색 탭 컨트롤 재정의 */
+/* 모바일 화면(480px 이하)에서 검색 탭 컨트롤 크기 재정의 */
 @media (max-width: 480px) {
-  #searchInput, #startMonth, #endMonth {
-    padding: 12px 15px; /* 모바일에서 보기 좋게 재조정 */
-    font-size: 1rem;
-  }
-  #searchBtn {
-    padding: 12px 20px;
-    font-size: 1.1rem;
-  }
+  #searchInput, #startMonth, #endMonth {
+    padding: 24px 15px; /* 모바일에서도 높이를 2배로 키워 줌 */
+    font-size: 1rem;
+  }
+  #searchBtn {
+    padding: 24px 20px; /* 입력창과 높이를 맞춤 */
+    font-size: 1.1rem;
+  }
 }
