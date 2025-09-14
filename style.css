@@ -501,8 +501,8 @@ body {
 
 /* 검색어, 시작월, 종료월 입력창에 대한 공통 스타일 */
 #searchInput, #startMonth, #endMonth {
-  padding: 15px 18px; /* 변경: 세로 길이를 더 키웁니다. */
-  font-size: 1.25rem;   /* 변경: 내부 글자 크기를 더 키웁니다. */
+  padding: 15px 18px; /* 이 부분을 기존 10px 12px에서 늘렸습니다. */
+  font-size: 1.25rem;   /* 이 부분도 기존 1.1rem에서 늘렸습니다. */
   border: 1px solid #ccc;
   border-radius: 4px;
   vertical-align: middle;
@@ -511,8 +511,8 @@ body {
 
 /* '검색하기' 버튼 스타일 */
 #searchBtn {
-  padding: 15px 25px; /* 변경: 입력창과 세로 길이를 맞추고, 좌우 여백을 늘려 더 크게 만듭니다. */
-  font-size: 1.25rem; /* 변경: 내부 글자 크기를 더 키웁니다. */
+  padding: 15px 25px; /* 이 부분을 기존 10px 20px에서 늘렸습니다. */
+  font-size: 1.25rem; /* 이 부분도 기존 1.1rem에서 늘렸습니다. */
   font-weight: bold;
   color: #fff;
   background-color: #007bff;
