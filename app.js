@@ -1,7 +1,8 @@
 // app.js - 카테고리 수정 문제 디버깅 및 API 연동
 
 // ▼▼▼ 선생님의 실제 앱스 스크립트 웹앱 배포 URL로 반드시 교체해주세요!!! ▼▼▼
-const APPS_SCRIPT_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbxiR6w6tIohFbPzTgAAVZtHeJqtyMyzVlMndDib0PB9x9W9k_282UpZ3zr19vkK2l8/exec"; //https://github.com/serendipist/my-budget-app/blob/main/app.js
+const API_ENDPOINT = "https://budget-api-166126275494.asia-northeast3.run.app";
+const API_KEY = "LovelyNaonDaon"; 
 // ▲▲▲ 선생님의 실제 배포 URL을 다시 한번 확인해주세요. ▲▲▲
 
 /* === 전역 상태 === */
@@ -734,6 +735,7 @@ function updateSubCategories() {
     });
   }
 }
+
 
 
 
