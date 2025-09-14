@@ -539,8 +539,14 @@ async function loadDailyTransactions(dateStr) {
 function displayDailyTransactions(arr, dateStr) {
   const list = document.getElementById('dailyTransactionList');
   if (!list) return;
-  if (arr && arr.error) { list.textContent = '내역 로딩 오류: ' + arr.error; return; }
-  if (!Array.isArray(arr) || arr.length === 0) { list.textContent = '해당 날짜의 거래 내역이 없습니다.'; return; }
+
+  // ▼▼▼ [수정됨] 데이터 유효성 검사를 더 엄격하게 진행 ▼▼▼
+  if (!Array.isArray(arr) || arr.length === 0) {
+    list.innerHTML = '해당 날짜의 거래 내역이 없습니다.';
+    return;
+  }
+  // ▲▲▲ [수정됨] 여기까지 입니다. ▲▲▲
+  
   list.innerHTML = '';
   arr.forEach(function(t) {
     if (!t || typeof t.type === 'undefined') return;
@@ -550,8 +556,12 @@ function displayDailyTransactions(arr, dateStr) {
     if (t.type === '지출' && t.paymentMethod) txt += ` (${t.paymentMethod})`;
     if (t.category1) txt += ` - ${t.category1}`;
     if (t.category2) txt += ` / ${t.category2}`;
-    d.textContent = txt; d.style.cursor = 'pointer'; d.title = '클릭하여 이 내용 수정하기';
-    d.addEventListener('click', function() { populateFormForEdit(t); });
+    d.textContent = txt;
+    d.style.cursor = 'pointer';
+    d.title = '클릭하여 이 내용 수정하기';
+    d.addEventListener('click', function() {
+      populateFormForEdit(t);
+    });
     list.appendChild(d);
   });
 }
@@ -758,6 +768,7 @@ function updateSubCategories() {
     });
   }
 }
+
 
 
 
