@@ -480,15 +480,19 @@ function validateTransactionData(data) {
 
 async function openModal(dateStr) {
   document.getElementById('transactionForm').reset();
-  currentEditingTransaction = null; 
+  currentEditingTransaction = null;
   document.getElementById('deleteBtn').style.display = 'none';
   document.getElementById('modalTitle').textContent = '거래 추가';
   document.getElementById('transactionDate').value = dateStr;
-  toggleTypeSpecificFields(); 
+  toggleTypeSpecificFields();
+
+  // ▼▼▼ [수정됨] 일일 거래 내역 섹션을 바로 보이도록 변경 ▼▼▼
+  document.getElementById('dailyTransactions').style.display = 'block';
+  document.getElementById('toggleDailyTransactions').textContent = '거래 내역 숨기기';
+  // ▲▲▲ [수정됨] 여기까지 입니다. ▲▲▲
+
   document.getElementById('dailyTransactionList').innerHTML = '불러오는 중...';
-  document.getElementById('dailyTransactions').style.display = 'none'; 
-  document.getElementById('toggleDailyTransactions').textContent = '거래 내역 보기';
-  document.getElementById('transactionModal').style.display = 'flex'; 
+  document.getElementById('transactionModal').style.display = 'flex';
   await loadDailyTransactions(dateStr);
 }
 
@@ -748,5 +752,6 @@ function updateSubCategories() {
     });
   }
 }
+
 
 
