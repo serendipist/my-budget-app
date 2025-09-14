@@ -112,21 +112,66 @@ window.onload = async () => {
 
 /* === 이벤트 리스너 설정 === */
 function setupEventListeners() {
-  document.getElementById('transactionForm').addEventListener('submit', handleTransactionSubmit);
-  document.getElementById('mainCategory').addEventListener('change', updateSubCategories);
+  const transactionForm = document.getElementById('transactionForm');
+  if (transactionForm) {
+    transactionForm.addEventListener('submit', handleTransactionSubmit);
+  }
+
+  const mainCategory = document.getElementById('mainCategory');
+  if (mainCategory) {
+    mainCategory.addEventListener('change', updateSubCategories);
+  }
+
   setupSwipeListeners();
-  document.getElementById('searchBtn').addEventListener('click', handleSearch);
+  
+  const searchBtn = document.getElementById('searchBtn');
+  if (searchBtn) {
+    searchBtn.addEventListener('click', handleSearch);
+  }
+
   document.querySelectorAll('input[name="type"]').forEach(radio => {
     radio.addEventListener('change', toggleTypeSpecificFields);
   });
-  document.getElementById('deleteBtn').addEventListener('click', handleDelete);
-  document.getElementById('closeModalBtn').addEventListener('click', closeModal);
-  document.getElementById('toggleDailyTransactions').addEventListener('click', toggleDailyTransactionVisibility);
-  document.getElementById('prevMonthBtn').addEventListener('click', () => changeMonth(-1));
-  document.getElementById('nextMonthBtn').addEventListener('click', () => changeMonth(1));
-  document.getElementById('cardSelector').addEventListener('change', displayCardData);
-  document.getElementById('prevCardMonthBtn').addEventListener('click', () => changeCardMonth(-1));
-  document.getElementById('nextCardMonthBtn').addEventListener('click', () => changeCardMonth(1));
+  
+  const deleteBtn = document.getElementById('deleteBtn');
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', handleDelete);
+  }
+  
+  const closeModalBtn = document.getElementById('closeModalBtn');
+  if (closeModalBtn) {
+    closeModalBtn.addEventListener('click', closeModal);
+  }
+  
+  const toggleDailyTransactions = document.getElementById('toggleDailyTransactions');
+  if (toggleDailyTransactions) {
+    toggleDailyTransactions.addEventListener('click', toggleDailyTransactionVisibility);
+  }
+  
+  const prevMonthBtn = document.getElementById('prevMonthBtn');
+  if (prevMonthBtn) {
+    prevMonthBtn.addEventListener('click', () => changeMonth(-1));
+  }
+  
+  const nextMonthBtn = document.getElementById('nextMonthBtn');
+  if (nextMonthBtn) {
+    nextMonthBtn.addEventListener('click', () => changeMonth(1));
+  }
+  
+  const cardSelector = document.getElementById('cardSelector');
+  if (cardSelector) {
+    cardSelector.addEventListener('change', displayCardData);
+  }
+  
+  const prevCardMonthBtn = document.getElementById('prevCardMonthBtn');
+  if (prevCardMonthBtn) {
+    prevCardMonthBtn.addEventListener('click', () => changeCardMonth(-1));
+  }
+  
+  const nextCardMonthBtn = document.getElementById('nextCardMonthBtn');
+  if (nextCardMonthBtn) {
+    nextCardMonthBtn.addEventListener('click', () => changeCardMonth(1));
+  }
 }
 
 
@@ -422,9 +467,13 @@ function displayDailyTransactions(arr, dateStr) {
     const d = document.createElement('div');
     d.classList.add('transaction-item', t.type === '수입' ? 'income' : 'expense');
     let txt = `[${t.type}] ${t.content || '(내용 없음)'}: ${Number(t.amount || 0).toLocaleString()}원`;
-    if (t.type === '지출' && t.paymentMethod) txt += ` (${t.paymentMethod})`;
-    if (t.category1) txt += ` - ${t.category1}`;
-    if (t.category2) txt += ` / ${t.category2}`;
+    if (t.type === '지출') {
+      if (t.paymentMethod) txt += ` (${t.paymentMethod})`;
+      if (t.category1) txt += ` - ${t.category1}`;
+      if (t.category2) txt += ` / ${t.category2}`;
+    } else {
+      if (t.category1) txt += ` - ${t.category1}`;
+    }
     d.textContent = txt; d.style.cursor = 'pointer'; d.title = '클릭하여 이 내용 수정하기';
     d.addEventListener('click', function() { populateFormForEdit(t); });
     list.appendChild(d);
