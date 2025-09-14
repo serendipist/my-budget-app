@@ -531,7 +531,7 @@ body {
 
 /* 검색어, 시작월, 종료월 입력창에 대한 공통 스타일 */
 #searchInput, #startMonth, #endMonth {
-  padding: 30px 18px; /* 높이를 2배로 키움: 15px -> 30px */
+  padding: 20px 18px; /* 높이를 20px로 낮춤 */
   font-size: 1.25rem;
   border: 1px solid #ccc;
   border-radius: 4px;
@@ -541,7 +541,7 @@ body {
 
 /* '검색하기' 버튼 스타일 */
 #searchBtn {
-  padding: 30px 25px; /* 입력창과 높이를 맞춤 */
+  padding: 20px 25px; /* 입력창과 높이를 맞춤 */
   font-size: 1.25rem;
   font-weight: bold;
   color: #fff;
@@ -560,11 +560,11 @@ body {
 /* 모바일 화면(480px 이하)에서 검색 탭 컨트롤 크기 재정의 */
 @media (max-width: 480px) {
   #searchInput, #startMonth, #endMonth {
-    padding: 24px 15px; /* 모바일에서도 높이를 2배로 키워 줌 */
+    padding: 16px 15px; /* 모바일에서도 높이를 20px에 맞춰 재조정 */
     font-size: 1rem;
   }
   #searchBtn {
-    padding: 24px 20px; /* 입력창과 높이를 맞춤 */
+    padding: 16px 20px;
     font-size: 1.1rem;
   }
 }
