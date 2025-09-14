@@ -137,65 +137,63 @@ async function changeMonth(delta){ /* 이전과 동일 */
   await updateCalendarDisplay(); 
 }
 
+/* === 수정된 updateCalendarDisplay 함수 === */
 async function updateCalendarDisplay () {
-  const loader       = document.getElementById('loader');
+  const loader = document.getElementById('loader');
   const calendarBody = document.getElementById('calendarBody');
   if (!calendarBody) { console.error('calendarBody not found'); return; }
+  
   if (loader) loader.style.display = 'block';
 
   console.log('[App.js] updateCalendarDisplay →', currentCycleMonth);
 
-  const cacheKey           = 'transactions_' + currentCycleMonth;
-  const cachedDataString   = localStorage.getItem(cacheKey);
-  let   renderedFromCache    = false;
-  let   transactionsToRender = [];
+  const cacheKey = 'transactions_' + currentCycleMonth;
+  const cachedDataString = localStorage.getItem(cacheKey);
+  let transactionsToRender = [];
+  let renderedFromCache = false;
 
+  // 1. 캐시 데이터가 있으면 일단 화면에 렌더링 (최적화)
   if (cachedDataString) {
     try {
       const cachedArr = JSON.parse(cachedDataString);
       if (Array.isArray(cachedArr)) {
         transactionsToRender = cachedArr;
-        renderCalendarAndSummary(cachedArr);
+        renderCalendarAndSummary(transactionsToRender);
         renderedFromCache = true;
-        console.log('[App.js] drew calendar from localStorage');
+        console.log('[App.js] Rendered from localStorage cache.');
       } else {
         localStorage.removeItem(cacheKey);
       }
     } catch (err) {
-      console.warn('cache parse fail → drop', err);
+      console.warn('Cache parse failed, dropping cache:', err);
       localStorage.removeItem(cacheKey);
     }
   }
 
-  if (!renderedFromCache) {
-    calendarBody.innerHTML = '';
-    renderCalendarAndSummary([]);
-  }
-
+  // 2. 백엔드에서 최신 데이터 가져오기
   try {
-    const latest = await callAppsScriptApi('getTransactions',
-                                          { cycleMonth: currentCycleMonth });
+    const latestData = await callAppsScriptApi('getTransactions', { cycleMonth: currentCycleMonth });
+    const finalTransactions = (latestData && Array.isArray(latestData)) ? latestData : [];
 
-    const finalTx = (latest && Array.isArray(latest)) ? latest : [];
-   
-    if (renderedFromCache && finalTx.length === 0) {
-      console.warn('[App.js] API empty → keep cached view');
-      return;
-    }
-
-    localStorage.setItem(cacheKey, JSON.stringify(finalTx));
-
-    if (!renderedFromCache ||
-        JSON.stringify(transactionsToRender) !== JSON.stringify(finalTx)) {
-      renderCalendarAndSummary(finalTx);
-
+    // 3. 최신 데이터와 캐시된 데이터가 다르면 화면을 업데이트하고 캐시를 갱신
+    if (!renderedFromCache || JSON.stringify(transactionsToRender) !== JSON.stringify(finalTransactions)) {
+      renderCalendarAndSummary(finalTransactions);
+      localStorage.setItem(cacheKey, JSON.stringify(finalTransactions));
+      console.log('[App.js] Updated display with fresh data.');
       if (renderedFromCache) {
         showToast?.('달력 정보가 업데이트 되었습니다.', false);
       }
+    } else {
+      console.log('[App.js] Cached data is up-to-date, no re-render needed.');
     }
+    
   } catch (err) {
-    console.error('[App.js] getTransactions failed', err);
-    if (!renderedFromCache) renderCalendarAndSummary([]);
+    console.error('[App.js] getTransactions API call failed:', err);
+    // API 호출 실패 시, 캐시된 데이터가 없으면 빈 화면을 렌더링
+    if (!renderedFromCache) {
+      renderCalendarAndSummary([]);
+      showToast?.('데이터를 불러오는 데 실패했습니다. 오프라인 모드로 표시됩니다.', true);
+    }
   } finally {
     if (loader) loader.style.display = 'none';
   }
@@ -755,3 +753,4 @@ function updateSubCategories() {
     });
   }
 }
+
