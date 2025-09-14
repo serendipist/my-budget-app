@@ -635,15 +635,26 @@ function showToast(msg,isErr=false){
   setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=> t.style.visibility = 'hidden', 500); }, 3000);
 }
 
+// app.js 파일에서 아래 코드를 찾아서 교체해주세요.
+
 function populateCardSelector(){
-  const sel = document.getElementById('cardSelector');
-  if (!sel) return;
-  const currentCard = sel.value; 
-  sel.innerHTML='<option value="">카드를 선택하세요</option>';
-  (paymentMethodsData||[]).filter(m=>m.isCard).forEach(c=>{
-    const o=document.createElement('option'); o.value=c.name; o.textContent=c.name; sel.appendChild(o);
-  });
-  if (currentCard && sel.querySelector(`option[value="${currentCard}"]`)) { sel.value = currentCard; }
+    const sel = document.getElementById('cardSelector');
+    if (!sel) return;
+    const currentCard = sel.value;
+    sel.innerHTML='<option value="">카드를 선택하세요</option>';
+    
+    // ▼▼▼ [수정됨] 필터링 코드 제거, 이제 서버가 필터링을 담당합니다. ▼▼▼
+    (paymentMethodsData || []).forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.name;
+        o.textContent = c.name;
+        sel.appendChild(o);
+    });
+    // ▲▲▲ [수정됨] 여기까지 입니다. ▲▲▲
+
+    if (currentCard && sel.querySelector(`option[value="${currentCard}"]`)) {
+        sel.value = currentCard;
+    }
 }
 
 async function changeCardMonth(d){
@@ -768,6 +779,7 @@ function updateSubCategories() {
     });
   }
 }
+
 
 
 
