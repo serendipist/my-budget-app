@@ -313,11 +313,9 @@ async function handleTransactionSubmit(e) {
   const fd = new FormData(form);
   const transactionData = {};
   fd.forEach((v, k) => transactionData[k] = v);
-
   if (!validateTransactionData(transactionData)) return;
-
-  const isEditing = currentEditingTransaction && typeof currentEditingTransaction.row !== 'undefined';
   
+  const isEditing = currentEditingTransaction && typeof currentEditingTransaction.row !== 'undefined';
   const loader = document.getElementById('loader');
   if (loader) loader.style.display = 'block';
   showToast(isEditing ? '수정 사항을 전송 중입니다...' : '저장 중입니다...');
@@ -326,26 +324,23 @@ async function handleTransactionSubmit(e) {
   try {
     let serverResult;
     if (isEditing) {
-      // 수정 API 호출 (PUT)
       const id = currentEditingTransaction.row;
       serverResult = await callApi(`/transactions/${id}`, 'PUT', transactionData);
     } else {
-      // 추가 API 호출 (POST)
       serverResult = await callApi('/transactions', 'POST', transactionData);
     }
     
-    if (serverResult.success) {
-      showToast(serverResult.message || (isEditing ? '수정 완료!' : '저장 완료!'), false);
-      await updateCalendarDisplay(); // 달력 새로고침
-    } else {
-      throw new Error(serverResult.message || serverResult.error || '서버 작업 처리 실패');
-    }
+    // ✅ 수정: callApi는 이미 data만 반환하므로 success 체크 제거
+    showToast(isEditing ? '수정 완료!' : '저장 완료!', false);
+    await updateCalendarDisplay(); // 달력 새로고침
+    
   } catch (error) {
     showToast((isEditing ? '수정 실패: ' : '저장 실패: ') + error.message, true);
   } finally {
     if (loader) loader.style.display = 'none';
   }
 }
+
 
 // [수정됨] 일일 거래 내역 로드
 async function loadDailyTransactions(dateStr) {
@@ -374,17 +369,18 @@ async function displayCardData() {
 
   const billingMonthForAPI = `${cardBillingCycleDate.getFullYear()}-${String(cardBillingCycleDate.getMonth() + 1).padStart(2, '0')}`;
   lbl.textContent = `${billingMonthForAPI} 주기 기준`;
-
+  
   try {
     const cardData = await callApi('/card-data', 'GET', {
       cardName: card,
       cycleMonth: billingMonthForAPI,
     });
-
-    if (!cardData || cardData.success === false) {
-      throw new Error(cardData?.error || '카드 데이터 구조 오류');
+    
+    // ✅ 수정: cardData는 이미 { cardName, billingAmount, ... } 형태
+    if (!cardData || !cardData.cardName) {
+      throw new Error('카드 데이터를 불러올 수 없습니다.');
     }
-
+    
     const { billingAmount, performanceAmount, performanceTarget } = cardData;
     const rate = performanceTarget > 0 ? ((performanceAmount / performanceTarget) * 100).toFixed(1) + '%' : '0%';
     
@@ -409,25 +405,19 @@ async function handleDelete() {
     }
     const rowId = currentEditingTransaction.row;
     
-    // 화면 먼저 업데이트
-    // ... 기존 Optimistic Update 로직 ...
     closeModal();
     showToast('삭제를 서버에 전송 중...');
-
     try {
         const serverResult = await callApi(`/transactions/${rowId}`, 'DELETE');
-        if (serverResult.success) {
-            showToast(serverResult.message || '삭제 완료!', false);
-            // 최종 데이터 동기화를 위해 달력 업데이트
-            await updateCalendarDisplay();
-        } else {
-            throw new Error(serverResult.message || serverResult.error || '서버에서 삭제 실패');
-        }
+        // ✅ 수정: success 체크 제거
+        showToast('삭제 완료!', false);
+        await updateCalendarDisplay();
+        
     } catch (error) {
         showToast(`삭제 실패! (${error.message})`, true);
-        // TODO: 실패 시 롤백 로직
     }
 }
+
 
 
 // --- 아래는 수정이 필요 없는 기존 함수들입니다 ---
@@ -701,3 +691,4 @@ function updateSubCategories() {
     });
   }
 }
+
