@@ -620,7 +620,7 @@ function showView(id){
   document.querySelector(`.tab-button[onclick="showView('${id}')"]`).classList.add('active');
   
   if(id==='cardView'){
-    cardPerformanceMonthDate = new Date(currentDisplayDate); 
+    cardPerformanceMonthDate = new Date(); 
     cardBillingCycleDate = new Date(currentDisplayDate); 
     
     displayCardData();
@@ -779,6 +779,7 @@ function updateSubCategories() {
     });
   }
 }
+
 
 
 
