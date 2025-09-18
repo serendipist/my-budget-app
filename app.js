@@ -619,13 +619,16 @@ function showView(id){
   document.querySelectorAll('.tab-button').forEach(b=>b.classList.remove('active'));
   document.querySelector(`.tab-button[onclick="showView('${id}')"]`).classList.add('active');
   if(id==='cardView'){
-    cardPerformanceMonthDate = new Date();  // ✅ 이 줄 추가!
+    cardPerformanceMonthDate = new Date();  // ✅ 현재 날짜
+    
+    // ✅ currentCycleMonth를 파싱해서 올바른 사이클 월로 설정
     const [year, month] = currentCycleMonth.split('-').map(Number);
-    cardBillingCycleDate = new Date(year, month - 1, 1);
+    cardBillingCycleDate = new Date(year, month - 1, 1);  // 해당 월의 1일
     
     displayCardData();
   }
 }
+
 
 function showToast(msg,isErr=false){
   const t = document.getElementById('toast');
@@ -780,6 +783,7 @@ function updateSubCategories() {
     });
   }
 }
+
 
 
 
