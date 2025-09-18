@@ -618,10 +618,10 @@ function showView(id){
   document.getElementById(id).classList.add('active');
   document.querySelectorAll('.tab-button').forEach(b=>b.classList.remove('active'));
   document.querySelector(`.tab-button[onclick="showView('${id}')"]`).classList.add('active');
-  
   if(id==='cardView'){
-    cardPerformanceMonthDate = new Date(); 
-    cardBillingCycleDate = new Date(currentDisplayDate); 
+    cardPerformanceMonthDate = new Date();  // ✅ 이 줄 추가!
+    const [year, month] = currentCycleMonth.split('-').map(Number);
+    cardBillingCycleDate = new Date(year, month - 1, 1);
     
     displayCardData();
   }
@@ -664,21 +664,20 @@ async function changeCardMonth(d){
 }
 
 async function displayCardData() {
-  const cardSel = document.getElementById('cardSelector');
-  const det = document.getElementById('cardDetails');
-  const lbl = document.getElementById('cardMonthLabel');
-  const loader = document.getElementById('loader');
-  const billingMonthForAPI = currentCycleMonth;  // ✓ 이것만 남기고
-  
-  if (!cardSel || !det || !lbl) return;
-  const card = cardSel.value;
-  if (!card){ det.innerHTML = '<p>카드를 선택해주세요.</p>'; lbl.textContent = ''; return; }
-  if(loader) loader.style.display = 'block';
-  
-  const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
-  
+   const cardSel = document.getElementById('cardSelector');
+   const det = document.getElementById('cardDetails');
+   const lbl = document.getElementById('cardMonthLabel');
+   const loader = document.getElementById('loader');
+   if (!cardSel || !det || !lbl) return;
+   const card = cardSel.value;
+   if (!card){ det.innerHTML = '<p>카드를 선택해주세요.</p>'; lbl.textContent = ''; return; }
+   if(loader) loader.style.display = 'block';
+    
+   const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
+   const billingMonthForAPI = `${cardBillingCycleDate.getFullYear()}-${String(cardBillingCycleDate.getMonth()+1).padStart(2,'0')}`;  // 원래대로
+    
   lbl.textContent = `${billingMonthForAPI} 주기 기준`;
-
+  
   try {
     const d = await callAppsScriptApi('getCardData', { 
       cardName: card, 
@@ -781,6 +780,7 @@ function updateSubCategories() {
     });
   }
 }
+
 
 
 
