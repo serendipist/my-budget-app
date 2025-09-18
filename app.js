@@ -677,7 +677,7 @@ async function displayCardData() {
    if(loader) loader.style.display = 'block';
     
    const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
-   const billingMonthForAPI = `${cardBillingCycleDate.getFullYear()}-${String(cardBillingCycleDate.getMonth()+1).padStart(2,'0')}`;  // 원래대로
+   const billingMonthForAPI = `${cardBillingCycleDate.getFullYear()}-${String(cardBillingCycleDate.getMonth()+1).padStart(2,'0')}`;
     
   lbl.textContent = `${billingMonthForAPI} 주기 기준`;
   
@@ -783,6 +783,7 @@ function updateSubCategories() {
     });
   }
 }
+
 
 
 
