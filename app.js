@@ -668,13 +668,15 @@ async function displayCardData() {
   const det = document.getElementById('cardDetails');
   const lbl = document.getElementById('cardMonthLabel');
   const loader = document.getElementById('loader');
+  const billingMonthForAPI = currentCycleMonth;  // ✓ 이것만 남기고
+  
   if (!cardSel || !det || !lbl) return;
   const card = cardSel.value;
   if (!card){ det.innerHTML = '<p>카드를 선택해주세요.</p>'; lbl.textContent = ''; return; }
   if(loader) loader.style.display = 'block';
-
+  
   const perfMonth = `${cardPerformanceMonthDate.getFullYear()}-${String(cardPerformanceMonthDate.getMonth()+1).padStart(2,'0')}`;
-  const billingMonthForAPI = `${cardBillingCycleDate.getFullYear()}-${String(cardBillingCycleDate.getMonth()+1).padStart(2,'0')}`;
+  
   lbl.textContent = `${billingMonthForAPI} 주기 기준`;
 
   try {
@@ -779,6 +781,7 @@ function updateSubCategories() {
     });
   }
 }
+
 
 
 
